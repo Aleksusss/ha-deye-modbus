@@ -45,10 +45,13 @@ first so that its entity id becomes free.
    `_2`), value 3473.6 (same as step 0), Developer tools -> Statistics:
    no issue.
 
-Side effect observed: the Energy cost sensor
+Side effect: the Energy cost sensor
 `sensor.elfin_deye_grid_import_total_cost` started a new cycle (state
-0.0, `last_reset` at the migration time). Effect on the daily Energy
-cost total: to be checked.
+0.0, `last_reset` at the migration time). **No impact on the daily
+totals [verified 2026-10-06 21:05]:** the Energy dashboard showed
+12.5 kWh of grid import for the day with no spike in any hour, and the
+day's cost summed across the reset (the cost total continued after
+20:03 instead of restarting from zero).
 
 ## TOU helpers renamed `deye_elfin_tou_*` -> `elfin_deye_tou_*`
 

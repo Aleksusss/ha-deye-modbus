@@ -1,0 +1,548 @@
+# ============================================================
+# Example dashboard — built-in cards only, no HACS.
+#
+# Use: Settings -> Dashboards -> Add dashboard -> open it ->
+# Edit -> three dots -> Raw configuration editor -> paste this file.
+#
+# Views:
+#   Deye        telemetry, grid, energy, history, BMS
+#   TOU Control emergency, schedule, normal profile, snapshot
+#   Diagnostics outage statistics, clock sync
+#
+# Cards for optional modules (grid outage, losses, PV split) show
+# "Entity not available" if that module is not installed; delete them.
+# ============================================================
+
+views:
+  # ==========================================================
+  # TELEMETRY
+  # ==========================================================
+  - title: Deye
+    path: deye
+    icon: mdi:solar-power-variant
+    type: sections
+    max_columns: 2
+    badges:
+      - type: entity
+        entity: sensor.elfin_deye_battery_soc
+        name: Battery
+        show_name: true
+      - type: entity
+        entity: binary_sensor.elfin_deye_grid_available
+        name: Grid
+        show_name: true
+      - type: entity
+        entity: sensor.elfin_deye_grid_power
+        name: Grid power
+        show_name: true
+      - type: entity
+        entity: sensor.elfin_deye_load_power
+        name: Load
+        show_name: true
+      - type: entity
+        entity: binary_sensor.elfin_deye_clock_needs_sync
+        name: Clock
+        show_name: true
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: markdown
+            visibility:
+              - condition: state
+                entity: binary_sensor.elfin_deye_grid_available
+                state: "off"
+            content: >
+              <ha-alert alert-type="error" title="No grid">
+              On battery for {{ states('sensor.elfin_deye_grid_outage_duration_now') }}.
+              Battery SOC {{ states('sensor.elfin_deye_battery_soc') }}%.
+              </ha-alert>
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Battery
+            icon: mdi:battery-high
+          - type: gauge
+            entity: sensor.elfin_deye_battery_soc
+            name: Battery SOC
+            min: 0
+            max: 100
+            needle: true
+            severity:
+              red: 0
+              yellow: 15
+              green: 40
+          - type: tile
+            entity: sensor.elfin_deye_battery_power
+            name: Battery power (+ discharge)
+          - type: tile
+            entity: sensor.elfin_deye_battery_voltage
+            name: Battery voltage
+          - type: tile
+            entity: sensor.elfin_deye_battery_current
+            name: Battery current
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Grid
+            icon: mdi:transmission-tower
+          - type: tile
+            entity: binary_sensor.elfin_deye_grid_available
+            name: Grid status
+            color: green
+          - type: tile
+            entity: sensor.elfin_deye_last_grid_outage_duration
+            name: Last outage
+          - type: tile
+            entity: sensor.elfin_deye_grid_power
+            name: Grid power (+ import)
+          - type: tile
+            entity: sensor.elfin_deye_load_power
+            name: Load
+          - type: tile
+            entity: sensor.elfin_deye_total_power
+            name: Inverter power (− charging)
+          - type: tile
+            entity: sensor.elfin_deye_ac_l1_voltage
+            name: Grid voltage
+          - type: tile
+            entity: sensor.elfin_deye_ac_frequency
+            name: Grid frequency
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Energy today
+            icon: mdi:lightning-bolt-circle
+          - type: tile
+            entity: sensor.elfin_deye_grid_import_today
+            name: Grid import
+          - type: tile
+            entity: sensor.elfin_deye_load_today
+            name: Load
+          - type: tile
+            entity: sensor.elfin_deye_battery_charge_today
+            name: Battery charge
+          - type: tile
+            entity: sensor.elfin_deye_battery_discharge_today
+            name: Battery discharge
+          - type: tile
+            entity: sensor.elfin_deye_pv_energy_today
+            name: PV
+          - type: tile
+            entity: sensor.elfin_deye_grid_export_today
+            name: Grid export
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: PV
+            icon: mdi:solar-power
+          - type: tile
+            entity: sensor.elfin_deye_pv1_power
+            name: PV1 power
+          - type: tile
+            entity: sensor.elfin_deye_pv2_power
+            name: PV2 power
+          - type: tile
+            entity: sensor.elfin_deye_pv1_energy_daily
+            name: PV1 today (est.)
+          - type: tile
+            entity: sensor.elfin_deye_pv2_energy_daily
+            name: PV2 today (est.)
+
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: History
+            icon: mdi:chart-line
+          - type: statistics-graph
+            title: Battery SOC — 24 h
+            period: 5minute
+            days_to_show: 1
+            chart_type: line
+            stat_types:
+              - mean
+            min_y_axis: 0
+            max_y_axis: 100
+            entities:
+              - entity: sensor.elfin_deye_battery_soc
+                name: SOC
+            grid_options:
+              columns: full
+          - type: statistics-graph
+            title: Power — 24 h
+            period: 5minute
+            days_to_show: 1
+            chart_type: line
+            stat_types:
+              - mean
+            entities:
+              - entity: sensor.elfin_deye_battery_power
+                name: Battery
+              - entity: sensor.elfin_deye_grid_power
+                name: Grid
+              - entity: sensor.elfin_deye_load_power
+                name: Load
+              - entity: sensor.elfin_deye_total_power
+                name: Inverter
+              - entity: sensor.elfin_deye_pv1_power
+                name: PV1
+              - entity: sensor.elfin_deye_pv2_power
+                name: PV2
+            grid_options:
+              columns: full
+          - type: history-graph
+            title: Grid availability — 24 h
+            hours_to_show: 24
+            entities:
+              - entity: binary_sensor.elfin_deye_grid_available
+                name: Grid available
+            grid_options:
+              columns: full
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Lifetime counters
+            icon: mdi:counter
+          - type: tile
+            entity: sensor.elfin_deye_grid_import_total
+            name: Grid import
+          - type: tile
+            entity: sensor.elfin_deye_load_total
+            name: Load
+          - type: tile
+            entity: sensor.elfin_deye_battery_charge_total
+            name: Battery charge
+          - type: tile
+            entity: sensor.elfin_deye_battery_discharge_total
+            name: Battery discharge
+          - type: tile
+            entity: sensor.elfin_deye_inverter_losses_total
+            name: Inverter losses
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: BMS and temperatures
+            icon: mdi:thermometer
+          - type: tile
+            entity: sensor.elfin_deye_bms_soc
+            name: BMS SOC
+          - type: tile
+            entity: sensor.elfin_deye_bms_voltage
+            name: BMS voltage
+          - type: tile
+            entity: sensor.elfin_deye_bms_charge_current_limit
+            name: Charge limit
+          - type: tile
+            entity: sensor.elfin_deye_bms_discharge_current_limit
+            name: Discharge limit
+          - type: tile
+            entity: sensor.elfin_deye_battery_temperature
+            name: Battery temp
+          - type: tile
+            entity: sensor.elfin_deye_bms_temperature
+            name: BMS temp
+          - type: tile
+            entity: sensor.elfin_deye_dc_temperature
+            name: DC (radiator) temp
+          - type: tile
+            entity: sensor.elfin_deye_ac_temperature
+            name: AC temp
+
+  # ==========================================================
+  # TOU CONTROL
+  # ==========================================================
+  - title: TOU Control
+    path: deye-tou
+    icon: mdi:clock-check-outline
+    type: sections
+    max_columns: 2
+    badges:
+      - type: entity
+        entity: input_boolean.elfin_deye_tou_emergency
+        name: Emergency
+        show_name: true
+      - type: entity
+        entity: input_boolean.elfin_deye_tou_write_lock
+        name: Write lock
+        show_name: true
+      - type: entity
+        entity: sensor.elfin_deye_tou_persistent_snapshot_status
+        name: Snapshot
+        show_name: true
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Deye TOU control
+            heading_style: title
+          - type: markdown
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "on"
+            content: >
+              <ha-alert alert-type="error" title="Emergency mode active">
+              All six TOU SOC targets are 100% since
+              {{ states('input_datetime.elfin_deye_tou_emergency_started') }}.
+              </ha-alert>
+          - type: markdown
+            visibility:
+              - condition: state
+                entity: binary_sensor.elfin_deye_tou_restore_available
+                state: "off"
+            content: >
+              <ha-alert alert-type="warning" title="No snapshot">
+              Press <b>Capture from inverter</b> first. Emergency and Apply
+              stay blocked until a snapshot exists.
+              </ha-alert>
+          - type: button
+            name: Enable emergency (100%)
+            icon: mdi:alarm-light
+            show_state: false
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "off"
+              - condition: state
+                entity: binary_sensor.elfin_deye_tou_restore_available
+                state: "on"
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_tou_emergency_on
+              confirmation:
+                text: Enable emergency mode? All six TOU SOC slots will be set to 100%.
+            grid_options:
+              columns: full
+          - type: button
+            name: Restore normal profile
+            icon: mdi:backup-restore
+            show_state: false
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "on"
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_tou_emergency_off
+              confirmation:
+                text: Restore the saved normal TOU SOC profile?
+            grid_options:
+              columns: full
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Current schedule (from inverter)
+            icon: mdi:calendar-clock
+          - type: markdown
+            content: |
+              {%- set nowm = now().hour * 60 + now().minute %}
+              {%- set ns = namespace(active=0, best=-1, last=0, lastm=-1) %}
+              {%- for i in range(1, 7) %}
+                {%- set t = states('sensor.elfin_deye_tou_start_time_slot_' ~ i) %}
+                {%- if t | length == 5 and t[2] == ':' %}
+                  {%- set m = (t[:2] | int) * 60 + (t[3:] | int) %}
+                  {%- if m <= nowm and m > ns.best %}{% set ns.best = m %}{% set ns.active = i %}{% endif %}
+                  {%- if m > ns.lastm %}{% set ns.lastm = m %}{% set ns.last = i %}{% endif %}
+                {%- endif %}
+              {%- endfor %}
+              {%- set active = ns.active if ns.active else ns.last %}
+              | | Slot | Start | SOC | Power | Grid charge |
+              |---|---|---|---|---|---|
+              {%- for i in range(1, 7) %}
+              | {{ '▶' if i == active else '' }} | {{ i }} | {{ states('sensor.elfin_deye_tou_start_time_slot_' ~ i) }} | {{ states('sensor.elfin_deye_tou_soc_slot_' ~ i) }}% | {{ states('sensor.elfin_deye_tou_power_slot_' ~ i) }} W | {{ 'yes' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ i, 'on') else 'no' }} |
+              {%- endfor %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Normal SOC profile (edit)
+            icon: mdi:pencil
+          - type: markdown
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "on"
+            content: >
+              <ha-alert alert-type="warning">
+              Emergency mode is active. Apply is blocked until you restore
+              the normal profile.
+              </ha-alert>
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_number.elfin_deye_tou_soc_1_draft
+                name: Slot 1 SOC
+              - entity: input_number.elfin_deye_tou_soc_2_draft
+                name: Slot 2 SOC
+              - entity: input_number.elfin_deye_tou_soc_3_draft
+                name: Slot 3 SOC
+              - entity: input_number.elfin_deye_tou_soc_4_draft
+                name: Slot 4 SOC
+              - entity: input_number.elfin_deye_tou_soc_5_draft
+                name: Slot 5 SOC
+              - entity: input_number.elfin_deye_tou_soc_6_draft
+                name: Slot 6 SOC
+              - entity: sensor.elfin_deye_tou_soc_draft_status
+                name: Draft status
+          - type: button
+            name: Apply SOC profile to inverter
+            icon: mdi:content-save-cog
+            show_state: false
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "off"
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_snapshot_valid
+                state: "on"
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_tou_apply_normal_soc_profile
+              confirmation:
+                text: Write the six draft SOC values to the inverter?
+            grid_options:
+              columns: full
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Saved snapshot
+            icon: mdi:content-save
+          - type: markdown
+            content: |
+              | Slot | Start | SOC |
+              |---|---|---|
+              {%- for i in range(1, 7) %}
+              | {{ i }} | {{ states('input_text.elfin_deye_tou_snapshot_time_' ~ i) }} | {{ states('input_number.elfin_deye_tou_snapshot_soc_' ~ i) | int(0) }}% |
+              {%- endfor %}
+
+              Captured: {{ states('input_datetime.elfin_deye_tou_snapshot_captured_at') }}
+
+              Last action: {{ states('input_text.elfin_deye_tou_last_action') }}
+          - type: button
+            name: Capture from inverter
+            icon: mdi:content-save-outline
+            show_state: false
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "off"
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_tou_capture_snapshot
+              confirmation:
+                text: >-
+                  Read the current SOC profile from the inverter and replace
+                  the saved snapshot and the drafts?
+            grid_options:
+              columns: full
+          - type: entities
+            title: Safety status
+            entities:
+              - entity: input_boolean.elfin_deye_tou_write_lock
+                name: Write lock
+              - entity: binary_sensor.elfin_deye_tou_write_allowed
+                name: Write allowed
+              - entity: binary_sensor.elfin_deye_tou_restore_available
+                name: Restore available
+              - entity: sensor.elfin_deye_tou_grid_charge_state
+                name: Grid charge (all slots)
+
+  # ==========================================================
+  # DIAGNOSTICS
+  # ==========================================================
+  - title: Diagnostics
+    path: deye-diagnostics
+    icon: mdi:tools
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Grid outage statistics
+            icon: mdi:history
+          - type: tile
+            entity: sensor.elfin_deye_grid_outage_count_today
+            name: Outages today
+          - type: tile
+            entity: sensor.elfin_deye_grid_outage_time_today_formatted
+            name: Outage time today
+          - type: tile
+            entity: sensor.elfin_deye_grid_outage_count_week
+            name: Outages this week
+          - type: tile
+            entity: sensor.elfin_deye_grid_outage_time_week_formatted
+            name: Outage time this week
+          - type: tile
+            entity: sensor.elfin_deye_grid_outage_count_month
+            name: Outages this month
+          - type: tile
+            entity: sensor.elfin_deye_grid_outage_time_month_formatted
+            name: Outage time this month
+
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Clock sync
+            icon: mdi:clock-check-outline
+          - type: tile
+            entity: sensor.elfin_deye_clock_display
+            name: Inverter clock
+          - type: tile
+            entity: sensor.elfin_deye_clock_offset
+            name: Offset (+ = HA ahead)
+          - type: entities
+            entities:
+              - entity: binary_sensor.elfin_deye_clock_needs_sync
+                name: Needs sync
+              - type: attribute
+                entity: script.elfin_deye_sync_clock_once
+                attribute: last_triggered
+                name: Last synced
+                icon: mdi:clock-check-outline
+          - type: button
+            name: Sync clock now
+            icon: mdi:clock-sync-outline
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_sync_clock_once
+              confirmation:
+                text: Write Home Assistant's time to the inverter clock?
+          - type: sensor
+            entity: sensor.elfin_deye_clock_offset
+            graph: line
+            hours_to_show: 168
+            name: Clock offset (7 days)
+            grid_options:
+              columns: full
+          - type: logbook
+            title: Sync history
+            hours_to_show: 168
+            entities:
+              - script.elfin_deye_sync_clock_once
+              - automation.elfin_deye_automatic_clock_synchronization
+            grid_options:
+              columns: full

@@ -1,0 +1,294 @@
+# ============================================================
+# Deye — grid outage detection, statistics and notifications
+#
+# Optional module. Requires deye_modbus.yaml and deye_notify.yaml.
+#
+# Signal: register 194 (inverter grid relay), sensor
+# sensor.elfin_deye_grid_connected. NOT the AC voltage (register 150):
+# it can hold its last value while the grid is down, so it is used
+# neither for detection nor in the "grid lost" message.
+#
+# After the grid returns, 194 stays 0 for ~70 s while the inverter
+# checks grid stability. Outage durations therefore include that
+# reconnect wait: they measure time actually spent on battery.
+#
+# False-alarm protection:
+#   1. Grid Available has an availability guard: a missing Modbus read
+#      becomes "unavailable", never "off".
+#   2. A 2-minute startup grace flag gates every alert after a restart.
+#   3. Readings are snapshotted into automation variables at trigger
+#      time, so the value that passed the check is the value reported.
+#
+# NOT VERIFIED: behaviour on a real sub-second grid dip. A 10-15 s
+# breaker test (2026-10-06) produced both "lost" and "restored".
+# ============================================================
+
+input_boolean:
+  elfin_deye_system_ready:
+    name: Elfin Deye System Ready
+    icon: mdi:check-decagram
+    # initial: false on purpose: the flag must come up "off" after every
+    # restart and only turn on when the bootstrap automation's grace
+    # period ends. Restoring "on" would open alerts before Modbus is up.
+    initial: false
+
+input_number:
+  elfin_deye_soc_low_threshold:
+    name: Elfin Deye SOC Low Threshold
+    icon: mdi:battery-low
+    min: 5
+    max: 50
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+
+template:
+  # ========================================================
+  # GRID AVAILABILITY + CURRENT OUTAGE DURATION
+  #
+  # The availability guard is coupled to the outage automation below,
+  # which has NO `from: "on"` on its trigger:
+  #   - With the guard, an outage that starts during a comms hiccup
+  #     arrives as unavailable -> off, which `from: "on"` would miss.
+  #   - If the guard is ever removed, `from: "on"` MUST come back:
+  #     without the guard unavailable -> off is exactly the false-alarm
+  #     path.
+  # Tradeoff: if the gateway loses power together with the grid, this
+  # sensor goes unavailable rather than off and no alert is sent. Power
+  # the gateway from the inverter's backup output, or monitor it.
+  # ========================================================
+  - binary_sensor:
+      - name: Elfin Deye Grid Available
+        unique_id: elfin_deye_grid_available
+        device_class: power
+        icon: mdi:transmission-tower
+        state: >
+          {{ states('sensor.elfin_deye_grid_connected') | int(0) == 1 }}
+        availability: >
+          {{ states('sensor.elfin_deye_grid_connected') | is_number }}
+
+      - name: Elfin Deye Low SOC
+        unique_id: elfin_deye_low_soc
+        icon: mdi:battery-alert
+        state: >
+          {{
+            states('sensor.elfin_deye_battery_soc') | float(100)
+            <= states('input_number.elfin_deye_soc_low_threshold') | float(24)
+          }}
+        availability: >
+          {{ has_value('sensor.elfin_deye_battery_soc') }}
+
+    sensor:
+      - name: Elfin Deye Grid Outage Duration Now
+        unique_id: elfin_deye_grid_outage_duration_now
+        icon: mdi:transmission-tower-off
+        state: >
+          {% if is_state('binary_sensor.elfin_deye_grid_available', 'off') %}
+            {# now() is referenced on purpose: a template only re-renders
+               when an entity it reads changes, and Grid Available does not
+               change during an outage. Without now() the counter would
+               freeze at the moment the outage began. #}
+            {% set _ = now() %}
+            {{ time_since(states.binary_sensor.elfin_deye_grid_available.last_changed) }}
+          {% else %}
+            —
+          {% endif %}
+
+      # Wrap the history_stats sensors below (fractional hours).
+      - name: Elfin Deye Grid Outage Time Today Formatted
+        unique_id: elfin_deye_grid_outage_time_today_fmt
+        icon: mdi:timer-sand
+        state: >
+          {% set total_minutes = (states('sensor.elfin_deye_grid_outage_time_today') | float(0) * 60) | round(0) | int %}
+          {{ '%dh %02dm' | format(total_minutes // 60, total_minutes % 60) }}
+
+      - name: Elfin Deye Grid Outage Time Week Formatted
+        unique_id: elfin_deye_grid_outage_time_week_fmt
+        icon: mdi:timer-sand
+        state: >
+          {% set total_minutes = (states('sensor.elfin_deye_grid_outage_time_week') | float(0) * 60) | round(0) | int %}
+          {{ '%dh %02dm' | format(total_minutes // 60, total_minutes % 60) }}
+
+      - name: Elfin Deye Grid Outage Time Month Formatted
+        unique_id: elfin_deye_grid_outage_time_month_fmt
+        icon: mdi:timer-sand
+        state: >
+          {% set total_minutes = (states('sensor.elfin_deye_grid_outage_time_month') | float(0) * 60) | round(0) | int %}
+          {{ '%dh %02dm' | format(total_minutes // 60, total_minutes % 60) }}
+
+  # ========================================================
+  # LAST COMPLETED OUTAGE DURATION (trigger-based, no helpers)
+  # ========================================================
+  - triggers:
+      - trigger: state
+        entity_id: binary_sensor.elfin_deye_grid_available
+        from: "off"
+        to: "on"
+    sensor:
+      - name: Elfin Deye Last Grid Outage Duration
+        unique_id: elfin_deye_last_grid_outage_duration
+        icon: mdi:history
+        state: >
+          {% set delta = (trigger.to_state.last_changed - trigger.from_state.last_changed).total_seconds() %}
+          {{ '%dh %02dm' | format((delta // 3600) | int, ((delta % 3600) // 60) | int) }}
+        attributes:
+          duration_seconds: >
+            {{ (trigger.to_state.last_changed - trigger.from_state.last_changed).total_seconds() | int }}
+
+# ========================================================
+# OUTAGE COUNT / TIME — today, this week, this month
+# ========================================================
+sensor:
+  - platform: history_stats
+    name: Elfin Deye Grid Outage Time Today
+    unique_id: elfin_deye_grid_outage_time_today
+    entity_id: binary_sensor.elfin_deye_grid_available
+    state: "off"
+    type: time
+    start: "{{ today_at('00:00') }}"
+    end: "{{ now() }}"
+
+  - platform: history_stats
+    name: Elfin Deye Grid Outage Time Week
+    unique_id: elfin_deye_grid_outage_time_week
+    entity_id: binary_sensor.elfin_deye_grid_available
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now().weekday()) }}"
+    end: "{{ now() }}"
+
+  - platform: history_stats
+    name: Elfin Deye Grid Outage Time Month
+    unique_id: elfin_deye_grid_outage_time_month
+    entity_id: binary_sensor.elfin_deye_grid_available
+    state: "off"
+    type: time
+    start: "{{ now().replace(day=1, hour=0, minute=0, second=0, microsecond=0) }}"
+    end: "{{ now() }}"
+
+  - platform: history_stats
+    name: Elfin Deye Grid Outage Count Today
+    unique_id: elfin_deye_grid_outage_count_today
+    entity_id: binary_sensor.elfin_deye_grid_available
+    state: "off"
+    type: count
+    start: "{{ today_at('00:00') }}"
+    end: "{{ now() }}"
+
+  - platform: history_stats
+    name: Elfin Deye Grid Outage Count Week
+    unique_id: elfin_deye_grid_outage_count_week
+    entity_id: binary_sensor.elfin_deye_grid_available
+    state: "off"
+    type: count
+    start: "{{ now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now().weekday()) }}"
+    end: "{{ now() }}"
+
+  - platform: history_stats
+    name: Elfin Deye Grid Outage Count Month
+    unique_id: elfin_deye_grid_outage_count_month
+    entity_id: binary_sensor.elfin_deye_grid_available
+    state: "off"
+    type: count
+    start: "{{ now().replace(day=1, hour=0, minute=0, second=0, microsecond=0) }}"
+    end: "{{ now() }}"
+
+automation:
+  # Startup grace: alerts stay closed for 2 minutes after a restart.
+  - id: elfin_deye_startup_bootstrap
+    alias: Elfin Deye — Startup Bootstrap
+    mode: restart
+    triggers:
+      - trigger: homeassistant
+        event: start
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.elfin_deye_system_ready
+      - delay: "00:02:00"
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.elfin_deye_system_ready
+
+  - id: elfin_deye_grid_outage_started
+    alias: Elfin Deye — Grid Outage Started
+    mode: single
+    triggers:
+      # No `from: "on"` — see the coupling note on Grid Available.
+      - trigger: state
+        entity_id: binary_sensor.elfin_deye_grid_available
+        to: "off"
+        for:
+          seconds: 20
+    variables:
+      v_soc: "{{ states('sensor.elfin_deye_battery_soc') }}"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.elfin_deye_system_ready
+        state: "on"
+    actions:
+      - action: script.elfin_deye_notify_all
+        data:
+          title: "Deye: grid lost"
+          message: >-
+            External grid power has been lost.
+            Battery SOC: {{ v_soc }}%.
+
+  - id: elfin_deye_grid_restored
+    alias: Elfin Deye — Grid Restored
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.elfin_deye_grid_available
+        from: "off"
+        to: "on"
+        for:
+          seconds: 20
+    variables:
+      v_soc: "{{ states('sensor.elfin_deye_battery_soc') }}"
+      v_duration: "{{ states('sensor.elfin_deye_last_grid_outage_duration') }}"
+      v_l1: "{{ states('sensor.elfin_deye_ac_l1_voltage') }}"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.elfin_deye_system_ready
+        state: "on"
+    actions:
+      - action: script.elfin_deye_notify_all
+        data:
+          title: "Deye: grid restored"
+          # Voltage is informational here: the grid is back, so the
+          # register is live again. It does not gate the alert.
+          message: >-
+            External grid power is back.
+            Outage duration: {{ v_duration }}.
+            Battery SOC: {{ v_soc }}%.{% if v_l1 | is_number %}
+            Grid voltage L1: {{ v_l1 }} V.{% endif %}
+
+  - id: elfin_deye_low_soc_alert
+    alias: Elfin Deye — Low Battery SOC Alert
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.elfin_deye_low_soc
+        from: "off"
+        to: "on"
+        for:
+          minutes: 10
+    variables:
+      v_soc: "{{ states('sensor.elfin_deye_battery_soc') }}"
+      v_threshold: "{{ states('input_number.elfin_deye_soc_low_threshold') }}"
+      v_grid: "{{ states('binary_sensor.elfin_deye_grid_available') }}"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.elfin_deye_system_ready
+        state: "on"
+      - condition: template
+        value_template: "{{ v_soc | is_number }}"
+    actions:
+      - action: script.elfin_deye_notify_all
+        data:
+          title: "Deye: low battery SOC"
+          message: >-
+            Battery SOC is {{ v_soc }}%.
+            Threshold: {{ v_threshold }}%.
+            Grid available: {{ v_grid }}.

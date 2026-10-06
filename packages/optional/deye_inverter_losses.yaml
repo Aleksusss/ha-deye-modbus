@@ -1,0 +1,74 @@
+# ============================================================
+# Deye — inverter losses, for the Energy dashboard
+#
+# Optional module. Requires deye_modbus.yaml.
+#
+# The Energy dashboard never measures "Home"; it derives it from the
+# sources configured there:
+#   home = grid import + PV + battery discharge
+#          - battery charge - grid export
+# The inverter's own load counter measures what actually reaches the
+# loads. The gap between the two is what the inverter used itself:
+# AC->DC loss while charging, DC->AC loss while discharging, standby
+# draw. No smart plug can see it, so without this sensor it lands in
+# "Untracked consumption". Add it to Energy as an individual device.
+#
+#   losses = grid import + PV + battery discharge
+#            - battery charge - grid export - load
+#
+# PV and export are OPTIONAL. Set them below ONLY if the matching
+# source is configured in your Energy dashboard; leave them empty
+# otherwise (they count as 0). The formula must mirror Energy's own
+# sources, or the difference shows up as negative "losses".
+# Both must be LIFETIME counters (kWh, never resetting at midnight):
+# a daily counter would make this value drop at every reset.
+#
+# Assumes the whole house is on the inverter's output, so "load"
+# covers all consumption.
+#
+# state_class "total", not "total_increasing": the counters tick in
+# 0.1 kWh steps at different moments, so the difference can step back
+# by 0.1 for a minute. total_increasing may treat a drop as a meter
+# reset; total simply books the small negative delta.
+#
+# The availability guard turns any glitch (unavailable, unknown, a 0
+# read) of a USED counter into a gap instead of a huge jump.
+#
+# Verified on an install with grid + battery only (no PV, no export).
+# NOT VERIFIED: the daily value. First full day: 2026-10-07.
+# ============================================================
+
+template:
+  - sensor:
+      - name: Elfin Deye Inverter Losses Total
+        unique_id: elfin_deye_inverter_losses_total
+        icon: mdi:heat-wave
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total
+        availability: >
+          {# EDIT both lines: entity ids of lifetime PV / export counters, or '' #}
+          {% set pv_entity = '' %}
+          {% set export_entity = '' %}
+          {% set required = ['sensor.elfin_deye_grid_import_total',
+                             'sensor.elfin_deye_battery_charge_total',
+                             'sensor.elfin_deye_battery_discharge_total',
+                             'sensor.elfin_deye_load_total']
+                            + ([pv_entity] if pv_entity else [])
+                            + ([export_entity] if export_entity else []) %}
+          {% set ns = namespace(ok=true) %}
+          {% for e in required %}
+            {% if states(e) | float(0) <= 0 %}{% set ns.ok = false %}{% endif %}
+          {% endfor %}
+          {{ ns.ok }}
+        state: >
+          {# EDIT both lines: keep them identical to the availability block #}
+          {% set pv_entity = '' %}
+          {% set export_entity = '' %}
+          {% set grid = states('sensor.elfin_deye_grid_import_total') | float(0) %}
+          {% set dis = states('sensor.elfin_deye_battery_discharge_total') | float(0) %}
+          {% set chg = states('sensor.elfin_deye_battery_charge_total') | float(0) %}
+          {% set load = states('sensor.elfin_deye_load_total') | float(0) %}
+          {% set pv = states(pv_entity) | float(0) if pv_entity else 0 %}
+          {% set export = states(export_entity) | float(0) if export_entity else 0 %}
+          {{ (grid + pv + dis - chg - export - load) | round(1) }}

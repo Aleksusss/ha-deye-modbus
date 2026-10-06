@@ -1,0 +1,904 @@
+# ============================================================
+# Deye SUN-6K-SG05LP1-EU-AM2-P — Modbus hub and raw registers
+#
+# Core package. Every Modbus sensor of this project lives in this ONE
+# file: Home Assistant creates one hub per `modbus:` entry, and a second
+# entry with the same hub name or the same host:port is silently NOT
+# loaded, with all its sensors (only a Repairs issue reports it).
+# Other packages only add template sensors on top of these.
+#
+# Hardware path:
+#   inverter RS485 (Modbus RTU) -> Elfin EW11 -> Modbus TCP -> HA
+#
+# Hub name `deye_elfin` and slave 1 are fixed; the write scripts in the
+# other packages call this hub by name.
+#
+# ADDRESSES: `address:` below is the 0-based protocol address. mbpoll
+# counts from 1 by default, so `mbpoll -r 269` reads HA address 268.
+# Register numbers in comments are HA addresses unless marked "mbpoll".
+#
+# secrets.yaml must define:
+#   deye_modbus_host: 192.0.2.10   # IP of the RS485-to-TCP gateway
+# ============================================================
+
+modbus:
+  - name: deye_elfin
+    type: tcp
+    host: !secret deye_modbus_host
+    port: 502
+    timeout: 5
+    # The EW11 forwards one RTU request at a time. A short pause between
+    # requests avoids interleaved replies when many sensors poll at once.
+    delay: 1
+    message_wait_milliseconds: 100
+
+    sensors:
+      # ========================================================
+      # BATTERY
+      # ========================================================
+      - name: Elfin Deye Battery Voltage
+        unique_id: elfin_deye_battery_voltage
+        slave: 1
+        address: 183
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye Battery SOC
+        unique_id: elfin_deye_battery_soc
+        slave: 1
+        address: 184
+        input_type: holding
+        data_type: uint16
+        precision: 0
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        scan_interval: 15
+
+      # POSITIVE = discharging, NEGATIVE = charging. Verified both ways:
+      # +558 W on a discharging battery (stock logger: +548 W), and
+      # -1980 W while charging from the grid (2026-10-06).
+      - name: Elfin Deye Battery Power
+        unique_id: elfin_deye_battery_power_modbus_v1
+        slave: 1
+        address: 190
+        input_type: holding
+        data_type: int16
+        scale: 1
+        precision: 0
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye Battery Current
+        unique_id: elfin_deye_battery_current
+        slave: 1
+        address: 191
+        input_type: holding
+        data_type: int16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        scan_interval: 15
+
+      # ========================================================
+      # PV
+      # ========================================================
+      - name: Elfin Deye PV Energy Today
+        unique_id: elfin_deye_pv_energy_today
+        slave: 1
+        address: 107
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 60
+
+      - name: Elfin Deye PV1 Power
+        unique_id: elfin_deye_pv1_power
+        slave: 1
+        address: 186
+        input_type: holding
+        data_type: uint16
+        scale: 1
+        precision: 0
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye PV2 Power
+        unique_id: elfin_deye_pv2_power
+        slave: 1
+        address: 187
+        input_type: holding
+        data_type: uint16
+        scale: 1
+        precision: 0
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye PV1 Voltage
+        unique_id: elfin_deye_pv1_voltage
+        slave: 1
+        address: 109
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye PV1 Current
+        unique_id: elfin_deye_pv1_current
+        slave: 1
+        address: 110
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye PV2 Voltage
+        unique_id: elfin_deye_pv2_voltage
+        slave: 1
+        address: 111
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye PV2 Current
+        unique_id: elfin_deye_pv2_current
+        slave: 1
+        address: 112
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        scan_interval: 15
+
+      # ========================================================
+      # GRID / LOAD POWER
+      # ========================================================
+      # POSITIVE = import. Verified 2026-10-06 during grid charging:
+      # 2645 W here, battery -1980 W. The export sign (negative) is
+      # NOT verified: the test install never exports.
+      - name: Elfin Deye Grid Power
+        unique_id: elfin_deye_grid_power
+        slave: 1
+        address: 169
+        input_type: holding
+        data_type: int16
+        scale: 1
+        precision: 0
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye AC L1 Power
+        unique_id: elfin_deye_ac_l1_power
+        slave: 1
+        address: 173
+        input_type: holding
+        data_type: int16
+        scale: 1
+        precision: 0
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye AC L2 Power
+        unique_id: elfin_deye_ac_l2_power
+        slave: 1
+        address: 174
+        input_type: holding
+        data_type: int16
+        scale: 1
+        precision: 0
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 15
+
+      # 175 = INVERTER power, NOT house load (kellerza/sunsynk single-
+      # phase map: "Inverter power"). NEGATIVE while the inverter draws
+      # AC to charge the battery. The entity keeps its old name for
+      # history; dashboards label it "Inverter power".
+      #
+      # Verified 2026-10-06 while charging from the grid, idle / kettle:
+      #   169 grid      2645 / 3460
+      #   175 inverter -2084 / -1128
+      #   178 load       561 / 2332   (+~1770 W kettle)
+      #   190 battery  -1980 / -1106
+      # grid = load - inverter exactly (2645 = 561 + 2084).
+      - name: Elfin Deye Total Power
+        unique_id: elfin_deye_total_power
+        slave: 1
+        address: 175
+        input_type: holding
+        data_type: int16
+        scale: 1
+        precision: 0
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 15
+
+      # House load (kellerza/sunsynk: "Load power"). Verified as above:
+      # follows a kettle switched on and off. On this single-phase
+      # install 176 (Load L1) equals 178 and 177 (Load L2) is 0.
+      - name: Elfin Deye Load Power
+        unique_id: elfin_deye_load_power
+        slave: 1
+        address: 178
+        input_type: holding
+        data_type: int16
+        scale: 1
+        precision: 0
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 15
+
+      # ========================================================
+      # AC VOLTAGE AND FREQUENCY
+      # ========================================================
+      # Display only. Do NOT use for outage detection: this register can
+      # hold its last value while the grid is down. Use register 194.
+      - name: Elfin Deye AC L1 Voltage
+        unique_id: elfin_deye_ac_l1_voltage
+        slave: 1
+        address: 150
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        # Whole volts. 0.1 V jitter made almost every poll a new state,
+        # i.e. a new recorder row (~21,800 per day).
+        precision: 0
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye AC L2 Voltage
+        unique_id: elfin_deye_ac_l2_voltage
+        slave: 1
+        address: 151
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 15
+
+      - name: Elfin Deye AC Frequency
+        unique_id: elfin_deye_ac_frequency
+        slave: 1
+        address: 192
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: "Hz"
+        device_class: frequency
+        state_class: measurement
+        scan_interval: 15
+
+      # ========================================================
+      # GRID CONNECTED FLAG — register 194
+      #
+      # 1 = inverter grid relay closed, 0 = disconnected from the grid.
+      #
+      # Breaker test, 2026-10-06 (mbpoll at 1 s resolution):
+      #   - grid lost:     194 -> 0 instantly, same moment as voltage
+      #   - grid restored: voltage back instantly, 194 stays 0 for
+      #     ~70 s while the inverter checks grid stability, then -> 1
+      #
+      # The ~70 s hold-off is why this is the outage signal: after any
+      # loss the inverter keeps 194 at 0 for over a minute, so a 5 s
+      # poll catches it. Consequence: outage durations include the
+      # reconnect wait, i.e. they measure time actually spent on battery.
+      #
+      # NOT VERIFIED: behaviour on a real sub-second grid dip.
+      # ========================================================
+      - name: Elfin Deye Grid Connected
+        unique_id: elfin_deye_grid_connected
+        slave: 1
+        address: 194
+        input_type: holding
+        data_type: uint16
+        scan_interval: 5
+
+      # ========================================================
+      # TEMPERATURES (raw value is (°C + 100) * 10)
+      # ========================================================
+      - name: Elfin Deye DC Temperature
+        unique_id: elfin_deye_dc_temperature
+        slave: 1
+        address: 90
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        offset: -100
+        precision: 1
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye AC Temperature
+        unique_id: elfin_deye_ac_temperature
+        slave: 1
+        address: 91
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        offset: -100
+        precision: 1
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye Battery Temperature
+        unique_id: elfin_deye_battery_temperature
+        slave: 1
+        address: 182
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        offset: -100
+        precision: 1
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        scan_interval: 30
+
+      # ========================================================
+      # CLOCK — registers 22-24 in ONE request
+      #
+      # Read as one block so year/month, day/hour and minute/second come
+      # from the same moment. Three separate sensors were read at
+      # slightly different times and produced a false ~3600 s offset at
+      # every hour boundary.
+      #
+      # State: "year_month,day_hour,minute_second",
+      # e.g. "6665,5134,1337" = 2026-09-20 14:05:57.
+      # Decoded in deye_clock.yaml.
+      # ========================================================
+      - name: Elfin Deye Clock Raw
+        unique_id: elfin_deye_clock_raw
+        slave: 1
+        address: 22
+        input_type: holding
+        data_type: custom
+        structure: ">3H"
+        count: 3
+        scan_interval: 60
+
+      # ========================================================
+      # BMS
+      # ========================================================
+      - name: Elfin Deye BMS Charging Voltage
+        unique_id: elfin_deye_bms_charging_voltage
+        slave: 1
+        address: 312
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye BMS Discharge Voltage Raw
+        unique_id: elfin_deye_bms_discharge_voltage_raw
+        slave: 1
+        address: 313
+        input_type: holding
+        data_type: uint16
+        precision: 0
+        unit_of_measurement: "raw"
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye BMS Charge Current Limit
+        unique_id: elfin_deye_bms_charge_current_limit
+        slave: 1
+        address: 314
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye BMS Discharge Current Limit
+        unique_id: elfin_deye_bms_discharge_current_limit
+        slave: 1
+        address: 315
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye BMS SOC
+        unique_id: elfin_deye_bms_soc
+        slave: 1
+        address: 316
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye BMS Voltage
+        unique_id: elfin_deye_bms_voltage
+        slave: 1
+        address: 317
+        input_type: holding
+        data_type: uint16
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye BMS Current Raw
+        unique_id: elfin_deye_bms_current_raw
+        slave: 1
+        address: 318
+        input_type: holding
+        data_type: int16
+        precision: 0
+        unit_of_measurement: "raw"
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye BMS Temperature
+        unique_id: elfin_deye_bms_temperature
+        slave: 1
+        address: 319
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        offset: -100
+        precision: 1
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        scan_interval: 30
+
+      # ========================================================
+      # ENERGY COUNTERS
+      #
+      # "Today" counters are 16-bit. Lifetime counters are 32-bit with
+      # the LOW word first (swap: word), except grid import — see below.
+      # ========================================================
+      - name: Elfin Deye Battery Charge Today
+        unique_id: elfin_deye_battery_charge_today
+        slave: 1
+        address: 70
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 60
+
+      - name: Elfin Deye Battery Discharge Today
+        unique_id: elfin_deye_battery_discharge_today
+        slave: 1
+        address: 71
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 60
+
+      # Low word 72, high word 73. Verified with mbpoll: 19878 / 0 ->
+      # 1987.8 kWh, matching the stock logger.
+      - name: Elfin Deye Battery Charge Total
+        unique_id: elfin_deye_battery_charge_total
+        slave: 1
+        address: 72
+        input_type: holding
+        data_type: uint32
+        swap: word
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 60
+
+      # Low word 74, high word 75.
+      - name: Elfin Deye Battery Discharge Total
+        unique_id: elfin_deye_battery_discharge_total
+        slave: 1
+        address: 74
+        input_type: holding
+        data_type: uint32
+        swap: word
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 60
+
+      - name: Elfin Deye Grid Import Today
+        unique_id: elfin_deye_grid_import_today
+        slave: 1
+        address: 76
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 60
+
+      - name: Elfin Deye Grid Export Today
+        unique_id: elfin_deye_grid_export_today
+        slave: 1
+        address: 77
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 60
+
+      # Grid import lifetime counter is 32-bit but NOT contiguous:
+      # low word 78, HIGH WORD 80. Register 79 is grid frequency
+      # (mbpoll read 5001, then 4998 -> 50.01 / 49.98 Hz). Reading 78 as
+      # uint32 would glue the frequency on as the high word.
+      #
+      # 78-80 are read in ONE request so both words come from the same
+      # moment; the "xx" pad bytes skip register 79, so the state only
+      # changes when the counter ticks, not on every frequency wobble.
+      # State: "low,high", e.g. "32541,0". Decoded by the template
+      # sensor Elfin Deye Grid Import Total at the end of this file.
+      - name: Elfin Deye Grid Import Total Raw
+        unique_id: elfin_deye_grid_import_total_raw
+        slave: 1
+        address: 78
+        input_type: holding
+        data_type: custom
+        structure: ">HxxH"
+        count: 3
+        scan_interval: 60
+
+      - name: Elfin Deye Load Today
+        unique_id: elfin_deye_load_today
+        slave: 1
+        address: 84
+        input_type: holding
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 60
+
+      # Low word 85, high word 86. Verified with mbpoll.
+      - name: Elfin Deye Load Total
+        unique_id: elfin_deye_load_total
+        slave: 1
+        address: 85
+        input_type: holding
+        data_type: uint32
+        swap: word
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 60
+
+      # ========================================================
+      # TOU PROGRAM — six slots, four contiguous blocks
+      #
+      #   start time  250-255  HHMM as a decimal number (2330 = 23:30)
+      #   power       256-261  W
+      #   SOC         268-273  %   (mbpoll 269-274)
+      #   grid charge 274-279  flags, see deye_tou.yaml
+      #
+      # Mapping verified against the inverter LCD by setting six distinct
+      # values per block. The power block was once mapped one slot off
+      # (slot 1 read from 257); it went unnoticed because all six slots
+      # usually hold the same power.
+      # ========================================================
+      - name: Elfin Deye TOU Start Time Slot 1 Raw
+        unique_id: elfin_deye_tou_start_time_slot_1_raw
+        slave: 1
+        address: 250
+        input_type: holding
+        data_type: uint16
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Start Time Slot 2 Raw
+        unique_id: elfin_deye_tou_start_time_slot_2_raw
+        slave: 1
+        address: 251
+        input_type: holding
+        data_type: uint16
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Start Time Slot 3 Raw
+        unique_id: elfin_deye_tou_start_time_slot_3_raw
+        slave: 1
+        address: 252
+        input_type: holding
+        data_type: uint16
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Start Time Slot 4 Raw
+        unique_id: elfin_deye_tou_start_time_slot_4_raw
+        slave: 1
+        address: 253
+        input_type: holding
+        data_type: uint16
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Start Time Slot 5 Raw
+        unique_id: elfin_deye_tou_start_time_slot_5_raw
+        slave: 1
+        address: 254
+        input_type: holding
+        data_type: uint16
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Start Time Slot 6 Raw
+        unique_id: elfin_deye_tou_start_time_slot_6_raw
+        slave: 1
+        address: 255
+        input_type: holding
+        data_type: uint16
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Power Slot 1 Raw
+        unique_id: elfin_deye_tou_power_slot_1_raw
+        slave: 1
+        address: 256
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Power Slot 2 Raw
+        unique_id: elfin_deye_tou_power_slot_2_raw
+        slave: 1
+        address: 257
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Power Slot 3 Raw
+        unique_id: elfin_deye_tou_power_slot_3_raw
+        slave: 1
+        address: 258
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Power Slot 4 Raw
+        unique_id: elfin_deye_tou_power_slot_4_raw
+        slave: 1
+        address: 259
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Power Slot 5 Raw
+        unique_id: elfin_deye_tou_power_slot_5_raw
+        slave: 1
+        address: 260
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Power Slot 6 Raw
+        unique_id: elfin_deye_tou_power_slot_6_raw
+        slave: 1
+        address: 261
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU SOC Slot 1
+        unique_id: elfin_deye_tou_soc_slot_1
+        slave: 1
+        address: 268
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "%"
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU SOC Slot 2
+        unique_id: elfin_deye_tou_soc_slot_2
+        slave: 1
+        address: 269
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "%"
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU SOC Slot 3
+        unique_id: elfin_deye_tou_soc_slot_3
+        slave: 1
+        address: 270
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "%"
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU SOC Slot 4
+        unique_id: elfin_deye_tou_soc_slot_4
+        slave: 1
+        address: 271
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "%"
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU SOC Slot 5
+        unique_id: elfin_deye_tou_soc_slot_5
+        slave: 1
+        address: 272
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "%"
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU SOC Slot 6
+        unique_id: elfin_deye_tou_soc_slot_6
+        slave: 1
+        address: 273
+        input_type: holding
+        data_type: uint16
+        unit_of_measurement: "%"
+        state_class: measurement
+        scan_interval: 30
+
+      - name: Elfin Deye TOU Grid Charge Slot 1 Raw
+        unique_id: elfin_deye_tou_grid_charge_slot_1_raw
+        slave: 1
+        address: 274
+        input_type: holding
+        data_type: uint16
+        scan_interval: 120
+
+      - name: Elfin Deye TOU Grid Charge Slot 2 Raw
+        unique_id: elfin_deye_tou_grid_charge_slot_2_raw
+        slave: 1
+        address: 275
+        input_type: holding
+        data_type: uint16
+        scan_interval: 120
+
+      - name: Elfin Deye TOU Grid Charge Slot 3 Raw
+        unique_id: elfin_deye_tou_grid_charge_slot_3_raw
+        slave: 1
+        address: 276
+        input_type: holding
+        data_type: uint16
+        scan_interval: 120
+
+      - name: Elfin Deye TOU Grid Charge Slot 4 Raw
+        unique_id: elfin_deye_tou_grid_charge_slot_4_raw
+        slave: 1
+        address: 277
+        input_type: holding
+        data_type: uint16
+        scan_interval: 120
+
+      - name: Elfin Deye TOU Grid Charge Slot 5 Raw
+        unique_id: elfin_deye_tou_grid_charge_slot_5_raw
+        slave: 1
+        address: 278
+        input_type: holding
+        data_type: uint16
+        scan_interval: 120
+
+      - name: Elfin Deye TOU Grid Charge Slot 6 Raw
+        unique_id: elfin_deye_tou_grid_charge_slot_6_raw
+        slave: 1
+        address: 279
+        input_type: holding
+        data_type: uint16
+        scan_interval: 120
+
+
+template:
+  - sensor:
+      # ========================================================
+      # GRID IMPORT TOTAL — 32-bit, decoded from 78 (low) + 80 (high)
+      #
+      # The availability guard turns a failed or all-zero read into a
+      # gap. Without it a single "0,0" would look like a meter reset to
+      # total_increasing, and the next good read would book the whole
+      # lifetime counter into the Energy dashboard a second time.
+      # ========================================================
+      - name: Elfin Deye Grid Import Total
+        unique_id: elfin_deye_grid_import_total
+        icon: mdi:transmission-tower-import
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        availability: >
+          {% set raw = states('sensor.elfin_deye_grid_import_total_raw').split(',') %}
+          {{ raw | count == 2
+             and raw[0] | is_number and raw[1] | is_number
+             and (raw[0] | int(0)) + (raw[1] | int(0)) > 0 }}
+        state: >
+          {% set raw = states('sensor.elfin_deye_grid_import_total_raw').split(',') %}
+          {{ (((raw[1] | int(0)) * 65536 + (raw[0] | int(0))) * 0.1) | round(1) }}

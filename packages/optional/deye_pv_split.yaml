@@ -1,0 +1,38 @@
+# ============================================================
+# Deye — estimated PV1 / PV2 energy
+#
+# Optional module. Requires deye_modbus.yaml.
+#
+# The inverter exposes only combined PV energy (register 107), so the
+# per-string split is estimated by integrating PV1 / PV2 power (sampled
+# every 15 s). Expect it to differ slightly from the inverter's own
+# total; use it to compare strings, not for billing.
+# ============================================================
+
+sensor:
+  - platform: integration
+    name: Elfin Deye PV1 Energy (Estimated)
+    unique_id: elfin_deye_pv1_energy_estimated
+    source: sensor.elfin_deye_pv1_power
+    method: left
+    unit_prefix: k
+    unit_time: h
+    round: 3
+
+  - platform: integration
+    name: Elfin Deye PV2 Energy (Estimated)
+    unique_id: elfin_deye_pv2_energy_estimated
+    source: sensor.elfin_deye_pv2_power
+    method: left
+    unit_prefix: k
+    unit_time: h
+    round: 3
+
+# Daily totals, reset at midnight.
+utility_meter:
+  elfin_deye_pv1_energy_daily:
+    source: sensor.elfin_deye_pv1_energy_estimated
+    cycle: daily
+  elfin_deye_pv2_energy_daily:
+    source: sensor.elfin_deye_pv2_energy_estimated
+    cycle: daily

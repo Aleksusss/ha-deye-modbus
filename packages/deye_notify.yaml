@@ -1,0 +1,67 @@
+# ============================================================
+# Deye — the single notification script
+#
+# Every package in this project notifies through
+# script.elfin_deye_notify_all. Edit ONLY the two lists below.
+#
+# Each target is sent separately with continue_on_error, so one
+# unreachable channel (e.g. a chat bot during an internet outage —
+# exactly when outage alerts fire) never stops the others, and never
+# aborts the calling script.
+#
+# With both lists empty, messages go to a persistent notification in
+# the HA UI, so nothing is silently dropped on a fresh install.
+# ============================================================
+
+script:
+  elfin_deye_notify_all:
+    alias: Elfin Deye — Notify All
+    mode: parallel
+    max: 10
+    fields:
+      title:
+        description: Notification title
+        default: Deye
+        selector:
+          text:
+      message:
+        description: Notification body
+        required: true
+        selector:
+          text:
+    variables:
+      # EDIT: notify entities, sent with notify.send_message.
+      # Example: [notify.my_telegram_bot_chat]
+      notify_entities: []
+      # EDIT: legacy notify actions.
+      # Example: [notify.mobile_app_my_phone]
+      notify_actions: []
+      msg_title: "{{ title | default('Deye', true) }}"
+    sequence:
+      - repeat:
+          for_each: "{{ notify_entities }}"
+          sequence:
+            - action: notify.send_message
+              continue_on_error: true
+              data:
+                entity_id: "{{ repeat.item }}"
+                title: "{{ msg_title }}"
+                message: "{{ message }}"
+
+      - repeat:
+          for_each: "{{ notify_actions }}"
+          sequence:
+            - action: "{{ repeat.item }}"
+              continue_on_error: true
+              data:
+                title: "{{ msg_title }}"
+                message: "{{ message }}"
+
+      - if:
+          - condition: template
+            value_template: "{{ (notify_entities | count) + (notify_actions | count) == 0 }}"
+        then:
+          - action: persistent_notification.create
+            data:
+              title: "{{ msg_title }}"
+              message: "{{ message }}"

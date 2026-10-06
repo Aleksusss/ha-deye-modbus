@@ -1,0 +1,699 @@
+# ============================================================
+# Deye TOU SOC control — snapshot, apply, emergency 100%
+#
+# Requires: deye_modbus.yaml, deye_tou.yaml, deye_notify.yaml.
+#
+# WRITES ONLY the six TOU SOC registers 268-273 (mbpoll 269-274), as
+# one function-0x10 write. TOU times, power, grid-charge flags and the
+# TOU enable switch are never written.
+#
+# Flow:
+#   1. Capture  — read the six SOC targets from the inverter into a
+#                 persistent snapshot (the "normal" profile) and into
+#                 the drafts. Required once before Apply or Emergency.
+#   2. Emergency ON  — write 100% to all six slots (charge the battery
+#                 fully before an expected outage).
+#   3. Emergency OFF — write the snapshot back.
+#   Apply — write an edited draft profile (only outside Emergency).
+#
+# Safety layers:
+#   - write_lock: one write at a time; held only for
+#     write -> wait -> read-back, never across a notification.
+#   - Read-back: every write is verified by re-reading the six
+#     registers. This is the ONLY failure signal: a failed Modbus write
+#     does not fail the action (HA logs it and returns normally).
+#   - Notifications are sent BEFORE the lock is taken and AFTER it is
+#     released, so a broken notification channel can never strand it.
+#   - Stuck-lock recovery: released at HA start if a restart cut a
+#     write short, and by a watchdog if held for over 2 minutes.
+#   - No helper here uses `initial:`. `initial:` disables restore_state,
+#     which once reset the snapshot to YAML defaults on every restart
+#     (fix verified on live hardware 2026-10-06).
+#
+# Read-back cannot detect an address shift: it writes and reads the
+# same registers and would pass either way. The slot-to-register
+# mapping was verified against the inverter LCD; re-check it if the
+# SOC block address is ever changed.
+# ============================================================
+
+input_number:
+  elfin_deye_tou_soc_1_draft:
+    name: Elfin Deye TOU SOC 1 Draft
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_soc_2_draft:
+    name: Elfin Deye TOU SOC 2 Draft
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_soc_3_draft:
+    name: Elfin Deye TOU SOC 3 Draft
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_soc_4_draft:
+    name: Elfin Deye TOU SOC 4 Draft
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_soc_5_draft:
+    name: Elfin Deye TOU SOC 5 Draft
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_soc_6_draft:
+    name: Elfin Deye TOU SOC 6 Draft
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+
+  elfin_deye_tou_snapshot_soc_1:
+    name: Elfin Deye TOU Snapshot SOC 1
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_snapshot_soc_2:
+    name: Elfin Deye TOU Snapshot SOC 2
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_snapshot_soc_3:
+    name: Elfin Deye TOU Snapshot SOC 3
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_snapshot_soc_4:
+    name: Elfin Deye TOU Snapshot SOC 4
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_snapshot_soc_5:
+    name: Elfin Deye TOU Snapshot SOC 5
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  elfin_deye_tou_snapshot_soc_6:
+    name: Elfin Deye TOU Snapshot SOC 6
+    min: 10
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+
+input_text:
+  elfin_deye_tou_snapshot_time_1:
+    name: Elfin Deye TOU Snapshot Time 1
+    max: 16
+  elfin_deye_tou_snapshot_time_2:
+    name: Elfin Deye TOU Snapshot Time 2
+    max: 16
+  elfin_deye_tou_snapshot_time_3:
+    name: Elfin Deye TOU Snapshot Time 3
+    max: 16
+  elfin_deye_tou_snapshot_time_4:
+    name: Elfin Deye TOU Snapshot Time 4
+    max: 16
+  elfin_deye_tou_snapshot_time_5:
+    name: Elfin Deye TOU Snapshot Time 5
+    max: 16
+  elfin_deye_tou_snapshot_time_6:
+    name: Elfin Deye TOU Snapshot Time 6
+    max: 16
+  elfin_deye_tou_last_action:
+    name: Elfin Deye TOU Last Action
+    max: 255
+
+input_datetime:
+  elfin_deye_tou_snapshot_captured_at:
+    name: Elfin Deye TOU Snapshot Captured At
+    has_date: true
+    has_time: true
+  elfin_deye_tou_emergency_started:
+    name: Elfin Deye TOU Emergency Started
+    has_date: true
+    has_time: true
+
+input_boolean:
+  elfin_deye_tou_snapshot_valid:
+    name: Elfin Deye TOU Snapshot Valid
+    icon: mdi:shield-check
+  elfin_deye_tou_emergency:
+    name: Elfin Deye TOU Emergency 100%
+    icon: mdi:battery-alert
+  # Restores its state across restarts on purpose: a lock found "on" at
+  # startup means a restart interrupted a write, and the startup
+  # automation below reports that instead of hiding it.
+  elfin_deye_tou_write_lock:
+    name: Elfin Deye TOU Write Lock
+    icon: mdi:lock
+
+template:
+  - sensor:
+      - name: Elfin Deye TOU SOC Draft Status
+        unique_id: elfin_deye_tou_soc_draft_status
+        icon: mdi:pencil-outline
+        state: >
+          {% set draft = [
+            states('input_number.elfin_deye_tou_soc_1_draft') | int(-1),
+            states('input_number.elfin_deye_tou_soc_2_draft') | int(-1),
+            states('input_number.elfin_deye_tou_soc_3_draft') | int(-1),
+            states('input_number.elfin_deye_tou_soc_4_draft') | int(-1),
+            states('input_number.elfin_deye_tou_soc_5_draft') | int(-1),
+            states('input_number.elfin_deye_tou_soc_6_draft') | int(-1)
+          ] %}
+          {% set actual = [
+            states('sensor.elfin_deye_tou_soc_slot_1') | int(-1),
+            states('sensor.elfin_deye_tou_soc_slot_2') | int(-1),
+            states('sensor.elfin_deye_tou_soc_slot_3') | int(-1),
+            states('sensor.elfin_deye_tou_soc_slot_4') | int(-1),
+            states('sensor.elfin_deye_tou_soc_slot_5') | int(-1),
+            states('sensor.elfin_deye_tou_soc_slot_6') | int(-1)
+          ] %}
+          {% if -1 in draft or -1 in actual %}unavailable
+          {% elif draft == actual %}matches_actual
+          {% else %}draft_differs{% endif %}
+
+      - name: Elfin Deye TOU Persistent Snapshot Status
+        unique_id: elfin_deye_tou_persistent_snapshot_status
+        icon: mdi:database-check
+        state: >
+          {{ 'valid' if is_state('binary_sensor.elfin_deye_tou_restore_available', 'on') else 'empty' }}
+        attributes:
+          soc: >-
+            {{ [
+              states('input_number.elfin_deye_tou_snapshot_soc_1') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_2') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_3') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_4') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_5') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_6') | int(-1)
+            ] }}
+          captured_at: "{{ states('input_datetime.elfin_deye_tou_snapshot_captured_at') }}"
+          last_action: "{{ states('input_text.elfin_deye_tou_last_action') }}"
+
+  - binary_sensor:
+      - name: Elfin Deye TOU Restore Available
+        unique_id: elfin_deye_tou_restore_available
+        icon: mdi:backup-restore
+        state: >
+          {{
+            is_state('input_boolean.elfin_deye_tou_snapshot_valid', 'on')
+            and states('input_number.elfin_deye_tou_snapshot_soc_1') | int(-1) >= 10
+            and states('input_number.elfin_deye_tou_snapshot_soc_2') | int(-1) >= 10
+            and states('input_number.elfin_deye_tou_snapshot_soc_3') | int(-1) >= 10
+            and states('input_number.elfin_deye_tou_snapshot_soc_4') | int(-1) >= 10
+            and states('input_number.elfin_deye_tou_snapshot_soc_5') | int(-1) >= 10
+            and states('input_number.elfin_deye_tou_snapshot_soc_6') | int(-1) >= 10
+          }}
+
+      - name: Elfin Deye TOU Write Allowed
+        unique_id: elfin_deye_tou_write_allowed
+        icon: mdi:lock-open-check
+        state: >
+          {{
+            is_state('input_boolean.elfin_deye_tou_write_lock', 'off')
+            and has_value('sensor.elfin_deye_tou_soc_slot_1')
+            and has_value('sensor.elfin_deye_tou_soc_slot_2')
+            and has_value('sensor.elfin_deye_tou_soc_slot_3')
+            and has_value('sensor.elfin_deye_tou_soc_slot_4')
+            and has_value('sensor.elfin_deye_tou_soc_slot_5')
+            and has_value('sensor.elfin_deye_tou_soc_slot_6')
+          }}
+
+script:
+  # ----------------------------------------------------------
+  # Capture: inverter -> snapshot. Read-only towards the inverter.
+  # ----------------------------------------------------------
+  elfin_deye_tou_capture_snapshot:
+    alias: Elfin Deye TOU — Capture persistent snapshot
+    icon: mdi:content-save-outline
+    mode: single
+    sequence:
+      - if:
+          - condition: state
+            entity_id: input_boolean.elfin_deye_tou_write_lock
+            state: "off"
+          # During Emergency the inverter holds 100% in every slot;
+          # capturing that would make Emergency OFF restore 100% forever.
+          - condition: state
+            entity_id: input_boolean.elfin_deye_tou_emergency
+            state: "off"
+          - condition: template
+            value_template: >
+              {{ has_value('sensor.elfin_deye_tou_soc_slot_1')
+                 and has_value('sensor.elfin_deye_tou_soc_slot_2')
+                 and has_value('sensor.elfin_deye_tou_soc_slot_3')
+                 and has_value('sensor.elfin_deye_tou_soc_slot_4')
+                 and has_value('sensor.elfin_deye_tou_soc_slot_5')
+                 and has_value('sensor.elfin_deye_tou_soc_slot_6') }}
+        then:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.elfin_deye_tou_snapshot_valid
+          - repeat:
+              for_each: [1, 2, 3, 4, 5, 6]
+              sequence:
+                - action: input_number.set_value
+                  target:
+                    entity_id: "input_number.elfin_deye_tou_snapshot_soc_{{ repeat.item }}"
+                  data:
+                    value: "{{ states('sensor.elfin_deye_tou_soc_slot_' ~ repeat.item) | int }}"
+                - action: input_text.set_value
+                  target:
+                    entity_id: "input_text.elfin_deye_tou_snapshot_time_{{ repeat.item }}"
+                  data:
+                    value: "{{ states('sensor.elfin_deye_tou_start_time_slot_' ~ repeat.item) }}"
+                # The captured profile becomes the starting point for
+                # edits, so drafts never sit at the 10% minimum.
+                - action: input_number.set_value
+                  target:
+                    entity_id: "input_number.elfin_deye_tou_soc_{{ repeat.item }}_draft"
+                  data:
+                    value: "{{ states('sensor.elfin_deye_tou_soc_slot_' ~ repeat.item) | int }}"
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.elfin_deye_tou_snapshot_captured_at
+            data:
+              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.elfin_deye_tou_snapshot_valid
+          - variables:
+              soc_now: >-
+                {{ [
+                  states('sensor.elfin_deye_tou_soc_slot_1'),
+                  states('sensor.elfin_deye_tou_soc_slot_2'),
+                  states('sensor.elfin_deye_tou_soc_slot_3'),
+                  states('sensor.elfin_deye_tou_soc_slot_4'),
+                  states('sensor.elfin_deye_tou_soc_slot_5'),
+                  states('sensor.elfin_deye_tou_soc_slot_6')
+                ] | join('/') }}
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.elfin_deye_tou_last_action
+            data:
+              value: "Snapshot captured: SOC {{ soc_now }}"
+          - action: script.elfin_deye_notify_all
+            data:
+              title: Deye TOU
+              message: "Snapshot captured: SOC {{ soc_now }} at {{ now().strftime('%Y-%m-%d %H:%M:%S') }}."
+        else:
+          - action: script.elfin_deye_notify_all
+            data:
+              title: Deye TOU
+              message: >-
+                WARNING: Snapshot capture FAILED — write lock was on,
+                Emergency mode was on, or one of the six SOC sensors was
+                unavailable. No changes were made to the saved snapshot.
+
+  # ----------------------------------------------------------
+  # Apply: draft -> inverter. Blocked while Emergency is on
+  # (fix verified on live hardware 2026-10-06).
+  # ----------------------------------------------------------
+  elfin_deye_tou_apply_normal_soc_profile:
+    alias: Elfin Deye TOU — Apply normal SOC profile
+    icon: mdi:content-save-cog
+    mode: single
+    sequence:
+      - variables:
+          values: >-
+            {{ [
+              states('input_number.elfin_deye_tou_soc_1_draft') | int(-1),
+              states('input_number.elfin_deye_tou_soc_2_draft') | int(-1),
+              states('input_number.elfin_deye_tou_soc_3_draft') | int(-1),
+              states('input_number.elfin_deye_tou_soc_4_draft') | int(-1),
+              states('input_number.elfin_deye_tou_soc_5_draft') | int(-1),
+              states('input_number.elfin_deye_tou_soc_6_draft') | int(-1)
+            ] }}
+      - condition: template
+        value_template: >
+          {{ values | select('ge', 10) | select('le', 100) | list | count == 6 }}
+      - condition: state
+        entity_id: input_boolean.elfin_deye_tou_write_lock
+        state: "off"
+      # Never write over the Emergency 100% profile. Restore normal mode
+      # first (Emergency OFF), then apply the edited profile.
+      - condition: state
+        entity_id: input_boolean.elfin_deye_tou_emergency
+        state: "off"
+      # No Apply before the first Capture: until then the drafts hold
+      # helper defaults (10%), not a profile anyone chose.
+      - condition: state
+        entity_id: input_boolean.elfin_deye_tou_snapshot_valid
+        state: "on"
+
+      # Notify BEFORE the lock: a failure here aborts with the lock off.
+      - action: script.elfin_deye_notify_all
+        data:
+          title: Deye TOU
+          message: "Applying normal TOU SOC profile: {{ values | join('/') }}."
+
+      # ---- write_lock window opens ----
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.elfin_deye_tou_write_lock
+      - action: modbus.write_register
+        data:
+          hub: deye_elfin
+          slave: 1
+          address: 268
+          value: "{{ values }}"
+      - delay: {seconds: 15}
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.elfin_deye_tou_soc_slot_1
+            - sensor.elfin_deye_tou_soc_slot_2
+            - sensor.elfin_deye_tou_soc_slot_3
+            - sensor.elfin_deye_tou_soc_slot_4
+            - sensor.elfin_deye_tou_soc_slot_5
+            - sensor.elfin_deye_tou_soc_slot_6
+      - delay: {seconds: 5}
+      - variables:
+          actual: >-
+            {{ [
+              states('sensor.elfin_deye_tou_soc_slot_1') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_2') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_3') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_4') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_5') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_6') | int(-1)
+            ] }}
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.elfin_deye_tou_write_lock
+      # ---- write_lock window closed ----
+
+      - if:
+          - condition: template
+            value_template: "{{ actual == values }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.elfin_deye_tou_last_action
+            data:
+              value: "Normal SOC verified: {{ values | join('/') }}"
+          - action: script.elfin_deye_notify_all
+            data:
+              title: Deye TOU
+              message: "Normal SOC verified: {{ values | join('/') }}."
+        else:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.elfin_deye_tou_last_action
+            data:
+              value: >-
+                Apply FAILED — wrote {{ values | join('/') }}, read back
+                {{ actual | join('/') }}
+          - action: script.elfin_deye_notify_all
+            data:
+              title: Deye TOU
+              message: >-
+                WARNING: Apply normal SOC verification FAILED. Wrote
+                {{ values | join('/') }}, inverter reads
+                {{ actual | join('/') }}. Write lock has been released —
+                check the inverter before retrying.
+
+  # ----------------------------------------------------------
+  # Emergency ON: 100% in all six slots.
+  # Requires a valid snapshot, so there is always a way back.
+  # ----------------------------------------------------------
+  elfin_deye_tou_emergency_on:
+    alias: Elfin Deye TOU — Emergency ON 100 percent
+    icon: mdi:alarm-light
+    mode: single
+    sequence:
+      - condition: state
+        entity_id: input_boolean.elfin_deye_tou_write_lock
+        state: "off"
+      - condition: state
+        entity_id: input_boolean.elfin_deye_tou_emergency
+        state: "off"
+      - condition: state
+        entity_id: binary_sensor.elfin_deye_tou_restore_available
+        state: "on"
+
+      - action: script.elfin_deye_notify_all
+        data:
+          title: Deye TOU
+          message: "Emergency ON started. Writing 100% to all six TOU SOC slots."
+
+      # ---- write_lock window opens ----
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.elfin_deye_tou_write_lock
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.elfin_deye_tou_emergency_started
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: modbus.write_register
+        data:
+          hub: deye_elfin
+          slave: 1
+          address: 268
+          value: [100, 100, 100, 100, 100, 100]
+      - delay: {seconds: 15}
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.elfin_deye_tou_soc_slot_1
+            - sensor.elfin_deye_tou_soc_slot_2
+            - sensor.elfin_deye_tou_soc_slot_3
+            - sensor.elfin_deye_tou_soc_slot_4
+            - sensor.elfin_deye_tou_soc_slot_5
+            - sensor.elfin_deye_tou_soc_slot_6
+      - delay: {seconds: 5}
+      - variables:
+          actual: >-
+            {{ [
+              states('sensor.elfin_deye_tou_soc_slot_1') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_2') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_3') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_4') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_5') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_6') | int(-1)
+            ] }}
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.elfin_deye_tou_write_lock
+      # ---- write_lock window closed ----
+
+      - if:
+          - condition: template
+            value_template: "{{ actual == [100, 100, 100, 100, 100, 100] }}"
+        then:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.elfin_deye_tou_emergency
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.elfin_deye_tou_last_action
+            data:
+              value: "Emergency ON verified: 100/100/100/100/100/100"
+          - action: script.elfin_deye_notify_all
+            data:
+              title: Deye TOU
+              message: "Emergency ON verified by read-back: 100/100/100/100/100/100."
+        else:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.elfin_deye_tou_last_action
+            data:
+              value: "Emergency ON FAILED — read back {{ actual | join('/') }}"
+          - action: script.elfin_deye_notify_all
+            data:
+              title: Deye TOU
+              message: >-
+                WARNING: Emergency ON verification FAILED. Inverter reads
+                {{ actual | join('/') }} instead of 100/100/100/100/100/100.
+                Write lock released — check the inverter.
+
+  # ----------------------------------------------------------
+  # Emergency OFF: snapshot -> inverter.
+  # ----------------------------------------------------------
+  elfin_deye_tou_emergency_off:
+    alias: Elfin Deye TOU — Emergency OFF and restore snapshot
+    icon: mdi:backup-restore
+    mode: single
+    sequence:
+      - condition: state
+        entity_id: input_boolean.elfin_deye_tou_write_lock
+        state: "off"
+      - condition: state
+        entity_id: input_boolean.elfin_deye_tou_emergency
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.elfin_deye_tou_restore_available
+        state: "on"
+      - variables:
+          values: >-
+            {{ [
+              states('input_number.elfin_deye_tou_snapshot_soc_1') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_2') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_3') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_4') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_5') | int(-1),
+              states('input_number.elfin_deye_tou_snapshot_soc_6') | int(-1)
+            ] }}
+      - condition: template
+        value_template: >
+          {{ values | select('ge', 10) | select('le', 100) | list | count == 6 }}
+
+      - action: script.elfin_deye_notify_all
+        data:
+          title: Deye TOU
+          message: "Emergency OFF started. Restoring saved SOC profile: {{ values | join('/') }}."
+
+      # ---- write_lock window opens ----
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.elfin_deye_tou_write_lock
+      - action: modbus.write_register
+        data:
+          hub: deye_elfin
+          slave: 1
+          address: 268
+          value: "{{ values }}"
+      - delay: {seconds: 15}
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.elfin_deye_tou_soc_slot_1
+            - sensor.elfin_deye_tou_soc_slot_2
+            - sensor.elfin_deye_tou_soc_slot_3
+            - sensor.elfin_deye_tou_soc_slot_4
+            - sensor.elfin_deye_tou_soc_slot_5
+            - sensor.elfin_deye_tou_soc_slot_6
+      - delay: {seconds: 5}
+      - variables:
+          actual: >-
+            {{ [
+              states('sensor.elfin_deye_tou_soc_slot_1') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_2') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_3') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_4') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_5') | int(-1),
+              states('sensor.elfin_deye_tou_soc_slot_6') | int(-1)
+            ] }}
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.elfin_deye_tou_write_lock
+      # ---- write_lock window closed ----
+
+      - if:
+          - condition: template
+            value_template: "{{ actual == values }}"
+        then:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.elfin_deye_tou_emergency
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.elfin_deye_tou_last_action
+            data:
+              value: "Emergency OFF verified; restored SOC: {{ values | join('/') }}"
+          - action: script.elfin_deye_notify_all
+            data:
+              title: Deye TOU
+              message: "Emergency OFF verified by read-back. Restored SOC: {{ values | join('/') }}."
+        else:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.elfin_deye_tou_last_action
+            data:
+              value: >-
+                Emergency OFF FAILED — wrote {{ values | join('/') }},
+                read back {{ actual | join('/') }}
+          - action: script.elfin_deye_notify_all
+            data:
+              title: Deye TOU
+              message: >-
+                WARNING: Emergency OFF verification FAILED. Wrote
+                {{ values | join('/') }}, inverter reads
+                {{ actual | join('/') }}. Emergency flag left ON, write
+                lock released — check the inverter.
+
+automation:
+  # ----------------------------------------------------------
+  # Stuck-lock recovery, case 1: HA restarted inside a write window.
+  # write_lock restores its last state, so "on" at startup can only
+  # mean a write was cut short; its outcome is unknown.
+  # ----------------------------------------------------------
+  - id: elfin_deye_tou_write_lock_startup_release
+    alias: Elfin Deye TOU — Release write lock after restart
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    conditions:
+      - condition: state
+        entity_id: input_boolean.elfin_deye_tou_write_lock
+        state: "on"
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.elfin_deye_tou_write_lock
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.elfin_deye_tou_last_action
+        data:
+          value: "Write lock released at startup: a TOU write was interrupted by a restart"
+      - action: script.elfin_deye_notify_all
+        data:
+          title: Deye TOU
+          message: "TOU write was interrupted by a restart, check TOU values"
+
+  # ----------------------------------------------------------
+  # Stuck-lock recovery, case 2: a script aborted inside the window
+  # (e.g. the Modbus hub was not loaded, which raises instead of
+  # logging). A normal window is ~20 s; 2 minutes means it is stuck.
+  # ----------------------------------------------------------
+  - id: elfin_deye_tou_write_lock_watchdog
+    alias: Elfin Deye TOU — Write lock watchdog
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.elfin_deye_tou_write_lock
+        to: "on"
+        for:
+          minutes: 2
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.elfin_deye_tou_write_lock
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.elfin_deye_tou_last_action
+        data:
+          value: "Write lock released by watchdog after 2 minutes"
+      - action: script.elfin_deye_notify_all
+        data:
+          title: Deye TOU
+          message: >-
+            WARNING: TOU write lock was held for over 2 minutes and has
+            been released. A TOU write script probably aborted — check
+            TOU values.

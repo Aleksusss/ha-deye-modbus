@@ -1,0 +1,214 @@
+# ============================================================
+# Deye TOU program — read-only view
+#
+# Requires deye_modbus.yaml (the *_raw TOU sensors). Template sensors
+# only: no Modbus hub, no writes. Writing SOC targets is in
+# deye_tou_control.yaml.
+#
+# Grid-charge flags, registers 274-279 (one per slot):
+#   bits 0-1  charge source  0 none, 1 grid, 2 generator, 3 grid + gen
+#   bits 2-4  slot mode      (1 << 2 = "General")
+# Observed on the inverter: 5 with the LCD "Grid" box ticked,
+# 4 with it cleared (= mode "General" with / without grid charge).
+# Grid charge is therefore bit 0. The layout matches the
+# kellerza/sunsynk single-phase map; values other than 4 and 5 have
+# NOT been observed on this inverter.
+# ============================================================
+
+template:
+  - sensor:
+      # ========================================================
+      # START TIMES — raw HHMM -> "HH:MM"
+      # ========================================================
+      - name: Elfin Deye TOU Start Time Slot 1
+        unique_id: elfin_deye_tou_start_time_slot_1
+        icon: mdi:clock-outline
+        state: >
+          {% set v = states('sensor.elfin_deye_tou_start_time_slot_1_raw') | int(-1) %}
+          {% if 0 <= v <= 2359 and (v % 100) < 60 %}
+            {{ '%02d:%02d' | format(v // 100, v % 100) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      - name: Elfin Deye TOU Start Time Slot 2
+        unique_id: elfin_deye_tou_start_time_slot_2
+        icon: mdi:clock-outline
+        state: >
+          {% set v = states('sensor.elfin_deye_tou_start_time_slot_2_raw') | int(-1) %}
+          {% if 0 <= v <= 2359 and (v % 100) < 60 %}
+            {{ '%02d:%02d' | format(v // 100, v % 100) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      - name: Elfin Deye TOU Start Time Slot 3
+        unique_id: elfin_deye_tou_start_time_slot_3
+        icon: mdi:clock-outline
+        state: >
+          {% set v = states('sensor.elfin_deye_tou_start_time_slot_3_raw') | int(-1) %}
+          {% if 0 <= v <= 2359 and (v % 100) < 60 %}
+            {{ '%02d:%02d' | format(v // 100, v % 100) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      - name: Elfin Deye TOU Start Time Slot 4
+        unique_id: elfin_deye_tou_start_time_slot_4
+        icon: mdi:clock-outline
+        state: >
+          {% set v = states('sensor.elfin_deye_tou_start_time_slot_4_raw') | int(-1) %}
+          {% if 0 <= v <= 2359 and (v % 100) < 60 %}
+            {{ '%02d:%02d' | format(v // 100, v % 100) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      - name: Elfin Deye TOU Start Time Slot 5
+        unique_id: elfin_deye_tou_start_time_slot_5
+        icon: mdi:clock-outline
+        state: >
+          {% set v = states('sensor.elfin_deye_tou_start_time_slot_5_raw') | int(-1) %}
+          {% if 0 <= v <= 2359 and (v % 100) < 60 %}
+            {{ '%02d:%02d' | format(v // 100, v % 100) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      - name: Elfin Deye TOU Start Time Slot 6
+        unique_id: elfin_deye_tou_start_time_slot_6
+        icon: mdi:clock-outline
+        state: >
+          {% set v = states('sensor.elfin_deye_tou_start_time_slot_6_raw') | int(-1) %}
+          {% if 0 <= v <= 2359 and (v % 100) < 60 %}
+            {{ '%02d:%02d' | format(v // 100, v % 100) }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      # ========================================================
+      # POWER — pass-through of the raw registers, kept so existing
+      # dashboards and history that use these entity ids keep working.
+      # ========================================================
+      - name: Elfin Deye TOU Power Slot 1
+        unique_id: elfin_deye_tou_power_slot_1
+        icon: mdi:flash
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        availability: "{{ has_value('sensor.elfin_deye_tou_power_slot_1_raw') }}"
+        state: "{{ states('sensor.elfin_deye_tou_power_slot_1_raw') }}"
+
+      - name: Elfin Deye TOU Power Slot 2
+        unique_id: elfin_deye_tou_power_slot_2
+        icon: mdi:flash
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        availability: "{{ has_value('sensor.elfin_deye_tou_power_slot_2_raw') }}"
+        state: "{{ states('sensor.elfin_deye_tou_power_slot_2_raw') }}"
+
+      - name: Elfin Deye TOU Power Slot 3
+        unique_id: elfin_deye_tou_power_slot_3
+        icon: mdi:flash
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        availability: "{{ has_value('sensor.elfin_deye_tou_power_slot_3_raw') }}"
+        state: "{{ states('sensor.elfin_deye_tou_power_slot_3_raw') }}"
+
+      - name: Elfin Deye TOU Power Slot 4
+        unique_id: elfin_deye_tou_power_slot_4
+        icon: mdi:flash
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        availability: "{{ has_value('sensor.elfin_deye_tou_power_slot_4_raw') }}"
+        state: "{{ states('sensor.elfin_deye_tou_power_slot_4_raw') }}"
+
+      - name: Elfin Deye TOU Power Slot 5
+        unique_id: elfin_deye_tou_power_slot_5
+        icon: mdi:flash
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        availability: "{{ has_value('sensor.elfin_deye_tou_power_slot_5_raw') }}"
+        state: "{{ states('sensor.elfin_deye_tou_power_slot_5_raw') }}"
+
+      - name: Elfin Deye TOU Power Slot 6
+        unique_id: elfin_deye_tou_power_slot_6
+        icon: mdi:flash
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        availability: "{{ has_value('sensor.elfin_deye_tou_power_slot_6_raw') }}"
+        state: "{{ states('sensor.elfin_deye_tou_power_slot_6_raw') }}"
+
+      # ========================================================
+      # GRID CHARGE — summary over all six slots
+      # ========================================================
+      - name: Elfin Deye TOU Grid Charge State
+        unique_id: elfin_deye_tou_grid_charge_state
+        icon: mdi:battery-charging
+        state: >
+          {% set raw = [
+            states('sensor.elfin_deye_tou_grid_charge_slot_1_raw') | int(-1),
+            states('sensor.elfin_deye_tou_grid_charge_slot_2_raw') | int(-1),
+            states('sensor.elfin_deye_tou_grid_charge_slot_3_raw') | int(-1),
+            states('sensor.elfin_deye_tou_grid_charge_slot_4_raw') | int(-1),
+            states('sensor.elfin_deye_tou_grid_charge_slot_5_raw') | int(-1),
+            states('sensor.elfin_deye_tou_grid_charge_slot_6_raw') | int(-1)
+          ] %}
+          {% if raw | select('lt', 0) | list | count > 0 %}
+            not_verified
+          {% else %}
+            {% set on = raw | map('bitwise_and', 1) | select('eq', 1) | list | count %}
+            {% if on == 6 %}all_on{% elif on == 0 %}all_off{% else %}mixed{% endif %}
+          {% endif %}
+        attributes:
+          slot_1_raw: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_1_raw') }}"
+          slot_2_raw: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_2_raw') }}"
+          slot_3_raw: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_3_raw') }}"
+          slot_4_raw: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_4_raw') }}"
+          slot_5_raw: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_5_raw') }}"
+          slot_6_raw: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_6_raw') }}"
+
+  - binary_sensor:
+      # ========================================================
+      # GRID CHARGE — per slot (bit 0)
+      # ========================================================
+      - name: Elfin Deye TOU Grid Charge Slot 1
+        unique_id: elfin_deye_tou_grid_charge_slot_1
+        icon: mdi:transmission-tower-import
+        availability: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_1_raw') | int(-1) >= 0 }}"
+        state: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_1_raw') | int(0) | bitwise_and(1) == 1 }}"
+
+      - name: Elfin Deye TOU Grid Charge Slot 2
+        unique_id: elfin_deye_tou_grid_charge_slot_2
+        icon: mdi:transmission-tower-import
+        availability: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_2_raw') | int(-1) >= 0 }}"
+        state: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_2_raw') | int(0) | bitwise_and(1) == 1 }}"
+
+      - name: Elfin Deye TOU Grid Charge Slot 3
+        unique_id: elfin_deye_tou_grid_charge_slot_3
+        icon: mdi:transmission-tower-import
+        availability: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_3_raw') | int(-1) >= 0 }}"
+        state: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_3_raw') | int(0) | bitwise_and(1) == 1 }}"
+
+      - name: Elfin Deye TOU Grid Charge Slot 4
+        unique_id: elfin_deye_tou_grid_charge_slot_4
+        icon: mdi:transmission-tower-import
+        availability: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_4_raw') | int(-1) >= 0 }}"
+        state: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_4_raw') | int(0) | bitwise_and(1) == 1 }}"
+
+      - name: Elfin Deye TOU Grid Charge Slot 5
+        unique_id: elfin_deye_tou_grid_charge_slot_5
+        icon: mdi:transmission-tower-import
+        availability: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_5_raw') | int(-1) >= 0 }}"
+        state: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_5_raw') | int(0) | bitwise_and(1) == 1 }}"
+
+      - name: Elfin Deye TOU Grid Charge Slot 6
+        unique_id: elfin_deye_tou_grid_charge_slot_6
+        icon: mdi:transmission-tower-import
+        availability: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_6_raw') | int(-1) >= 0 }}"
+        state: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_6_raw') | int(0) | bitwise_and(1) == 1 }}"

@@ -1,0 +1,337 @@
+# ============================================================
+# Deye inverter clock — decode, drift, sync
+#
+# Requires deye_modbus.yaml (sensor.elfin_deye_clock_raw) and
+# deye_notify.yaml (warning when a sync cannot be verified).
+#
+# Register layout (one byte each, read as ONE block of three):
+#   22  high = year since 2000   low = month
+#   23  high = day               low = hour
+#   24  high = minute            low = second
+#
+# Writes: ONLY registers 22, 23 and 24, in one function-0x10 request
+# (the inverter ignores 0x06). Nothing else on the inverter is touched.
+#
+# The inverter has no time zone; it is set to HA's local time.
+# ============================================================
+
+template:
+  - sensor:
+      # --------------------------------------------------------
+      # Decoded fields. Unavailable (not 00:00) when the raw read is.
+      # --------------------------------------------------------
+      - name: Elfin Deye Clock Year
+        unique_id: elfin_deye_clock_year
+        icon: mdi:calendar
+        availability: "{{ has_value('sensor.elfin_deye_clock_raw') }}"
+        state: >
+          {% set p = states('sensor.elfin_deye_clock_raw').split(',') %}
+          {% set raw = p[0] | int(0) if p | count == 3 else 0 %}
+          {{ 2000 + (raw // 256) }}
+        state_class: measurement
+
+      - name: Elfin Deye Clock Month
+        unique_id: elfin_deye_clock_month
+        icon: mdi:calendar-month
+        availability: "{{ has_value('sensor.elfin_deye_clock_raw') }}"
+        state: >
+          {% set p = states('sensor.elfin_deye_clock_raw').split(',') %}
+          {% set raw = p[0] | int(0) if p | count == 3 else 0 %}
+          {{ raw % 256 }}
+        state_class: measurement
+
+      - name: Elfin Deye Clock Day
+        unique_id: elfin_deye_clock_day
+        icon: mdi:calendar-today
+        availability: "{{ has_value('sensor.elfin_deye_clock_raw') }}"
+        state: >
+          {% set p = states('sensor.elfin_deye_clock_raw').split(',') %}
+          {% set raw = p[1] | int(0) if p | count == 3 else 0 %}
+          {{ raw // 256 }}
+        state_class: measurement
+
+      - name: Elfin Deye Clock Hour
+        unique_id: elfin_deye_clock_hour
+        icon: mdi:clock-outline
+        availability: "{{ has_value('sensor.elfin_deye_clock_raw') }}"
+        state: >
+          {% set p = states('sensor.elfin_deye_clock_raw').split(',') %}
+          {% set raw = p[1] | int(0) if p | count == 3 else 0 %}
+          {{ raw % 256 }}
+        state_class: measurement
+
+      - name: Elfin Deye Clock Minute
+        unique_id: elfin_deye_clock_minute
+        icon: mdi:clock-outline
+        availability: "{{ has_value('sensor.elfin_deye_clock_raw') }}"
+        state: >
+          {% set p = states('sensor.elfin_deye_clock_raw').split(',') %}
+          {% set raw = p[2] | int(0) if p | count == 3 else 0 %}
+          {{ raw // 256 }}
+        state_class: measurement
+
+      - name: Elfin Deye Clock Second
+        unique_id: elfin_deye_clock_second
+        icon: mdi:clock-outline
+        availability: "{{ has_value('sensor.elfin_deye_clock_raw') }}"
+        state: >
+          {% set p = states('sensor.elfin_deye_clock_raw').split(',') %}
+          {% set raw = p[2] | int(0) if p | count == 3 else 0 %}
+          {{ raw % 256 }}
+        state_class: measurement
+
+      # --------------------------------------------------------
+      # Inverter clock as text, as of the last read.
+      # Example: 2026-09-20 14:05:57
+      # --------------------------------------------------------
+      - name: Elfin Deye Clock Display
+        unique_id: elfin_deye_clock_display
+        icon: mdi:clock-outline
+        availability: "{{ has_value('sensor.elfin_deye_clock_raw') }}"
+        state: >
+          {% set p = states('sensor.elfin_deye_clock_raw').split(',')
+                     | map('int', -1) | list %}
+          {% if p | count == 3 %}
+            {% set y = 2000 + (p[0] // 256) %}
+            {% set mo = p[0] % 256 %}
+            {% set d = p[1] // 256 %}
+            {% set h = p[1] % 256 %}
+            {% set mi = p[2] // 256 %}
+            {% set s = p[2] % 256 %}
+            {% if y >= 2020
+                  and mo >= 1 and mo <= 12
+                  and d >= 1 and d <= 31
+                  and h >= 0 and h <= 23
+                  and mi >= 0 and mi <= 59
+                  and s >= 0 and s <= 59 %}
+              {{ '%04d-%02d-%02d %02d:%02d:%02d' | format(y, mo, d, h, mi, s) }}
+            {% else %}
+              {{ none }}
+            {% endif %}
+          {% else %}
+            {{ none }}
+          {% endif %}
+
+      # --------------------------------------------------------
+      # Clock offset, seconds.
+      #   Positive: HA is ahead of the inverter.
+      #   Negative: the inverter is ahead of HA.
+      #
+      # Measured against the moment the registers were read
+      # (last_updated of the raw sensor), not now(), so it stays
+      # accurate to about +/-1 s with any scan_interval.
+      #
+      # The inverter time is pinned to HA's time zone explicitly.
+      # strptime() returns a naive datetime, and as_timestamp() of a
+      # naive datetime uses the time zone of the HA *process*, which in
+      # a container without TZ set is UTC — the offset would then equal
+      # the UTC offset and the sync would rewrite the clock every day.
+      # --------------------------------------------------------
+      - name: Elfin Deye Clock Offset
+        unique_id: elfin_deye_clock_offset
+        icon: mdi:clock-alert-outline
+        unit_of_measurement: "s"
+        state_class: measurement
+        availability: "{{ has_value('sensor.elfin_deye_clock_raw') }}"
+        state: >
+          {% set raw = states.sensor.elfin_deye_clock_raw %}
+          {% set p = raw.state.split(',') | map('int', -1) | list
+                     if raw is not none else [] %}
+          {% if p | count == 3 %}
+            {% set y = 2000 + (p[0] // 256) %}
+            {% set mo = p[0] % 256 %}
+            {% set d = p[1] // 256 %}
+            {% set h = p[1] % 256 %}
+            {% set mi = p[2] // 256 %}
+            {% set s = p[2] % 256 %}
+            {% if y >= 2020
+                  and mo >= 1 and mo <= 12
+                  and d >= 1 and d <= 31
+                  and h >= 0 and h <= 23
+                  and mi >= 0 and mi <= 59
+                  and s >= 0 and s <= 59 %}
+              {% set deye_text =
+                '%04d-%02d-%02d %02d:%02d:%02d' | format(y, mo, d, h, mi, s) %}
+              {% set deye_dt = strptime(deye_text, '%Y-%m-%d %H:%M:%S', none) %}
+              {% if deye_dt is not none %}
+                {% set deye_ts = as_timestamp(deye_dt.replace(tzinfo=now().tzinfo)) %}
+                {{ (as_timestamp(raw.last_updated) - deye_ts) | round(0) | int }}
+              {% else %}
+                {{ none }}
+              {% endif %}
+            {% else %}
+              {{ none }}
+            {% endif %}
+          {% else %}
+            {{ none }}
+          {% endif %}
+
+  - binary_sensor:
+      - name: Elfin Deye Clock Needs Sync
+        unique_id: elfin_deye_clock_needs_sync
+        icon: mdi:clock-alert-outline
+        availability: "{{ has_value('sensor.elfin_deye_clock_offset') }}"
+        state: >
+          {{ states('sensor.elfin_deye_clock_offset') | float(0) | abs > 60 }}
+
+script:
+  elfin_deye_sync_clock_once:
+    alias: Elfin Deye — Sync Clock Once
+    description: >
+      Set the inverter clock from Home Assistant's local time.
+      Writes only registers 22, 23 and 24 through the deye_elfin hub.
+    icon: mdi:clock-sync-outline
+    mode: single
+    sequence:
+      # ONE now() for all three registers. Calling now() once per
+      # register let an hour (or minute) roll over between the three
+      # renders: at 14:59:59.9 the hour came from 14 and the minute
+      # from 15:00, and the inverter was set to 14:00:00 — an hour off.
+      - variables:
+          regs: >
+            {% set t = now() %}
+            {{ [ (t.year - 2000) * 256 + t.month,
+                 t.day * 256 + t.hour,
+                 t.minute * 256 + t.second ] }}
+
+      # ONE function-0x10 request for all three registers, so the
+      # inverter never holds a half-written date/time. Verified with
+      # mbpoll on 2026-10-06 ("Written 3 references", clock moved as
+      # written). A list `value:` makes HA use 0x10.
+      - action: modbus.write_register
+        data:
+          hub: deye_elfin
+          slave: 1
+          address: 22
+          value: "{{ regs }}"
+
+      - delay:
+          seconds: 3
+
+      # Read-back: re-read 22-24 now instead of waiting for the
+      # scan_interval. A failed Modbus write does not fail the action
+      # (HA only logs it), so this is the only failure signal.
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.elfin_deye_clock_raw
+
+      # Let the decoded template sensors re-render.
+      - delay:
+          seconds: 2
+
+      - variables:
+          offset_after: "{{ states('sensor.elfin_deye_clock_offset') }}"
+
+      # OK if the offset is ~0, or ~3600 s: right after a correct sync in
+      # the repeated autumn DST hour (03:00-04:00 twice), the inverter
+      # time is ambiguous and is read as summer time, so the offset
+      # shows a phantom +3600 s. Without this, every autumn DST night
+      # would send a false "could not be verified" warning.
+      - if:
+          - condition: template
+            value_template: >
+              {% set o = (offset_after | float(99999)) | abs %}
+              {{ offset_after | is_number and (o <= 10 or (o - 3600) | abs < 10) }}
+        then:
+          - action: logbook.log
+            data:
+              name: Elfin Deye Clock
+              message: >
+                Clock written: {{ now().strftime('%Y-%m-%d %H:%M:%S %Z') }}.
+                Offset after write: {{ offset_after }} seconds.
+              domain: script
+              entity_id: script.elfin_deye_sync_clock_once
+        else:
+          - action: logbook.log
+            data:
+              name: Elfin Deye Clock
+              message: >
+                Clock write NOT verified: offset after write is
+                {{ offset_after }} seconds.
+              domain: script
+              entity_id: script.elfin_deye_sync_clock_once
+          - action: script.elfin_deye_notify_all
+            data:
+              title: Deye clock
+              message: >-
+                WARNING: inverter clock sync could not be verified. Offset
+                after writing: {{ offset_after }} s. Check the inverter clock.
+
+automation:
+  - id: elfin_deye_clock_sync_automatic
+    alias: Elfin Deye — Automatic Clock Synchronization
+    description: >
+      Checks the inverter clock after HA startup, once a day, and when
+      the offset stays over 60 seconds for 10 minutes (DST, drift).
+      Synchronizes only when the offset exceeds 60 seconds.
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: time
+        at: "03:05:00"
+        id: daily_check
+      - trigger: homeassistant
+        event: start
+        id: startup_check
+      # Offset over 60 s for 10 minutes. Needed for DST: the autumn
+      # switch happens at 04:00, AFTER the 03:05 check, so without this
+      # the inverter would stay an hour off (shifting every TOU slot by
+      # an hour) until the next day's check. Also catches drift.
+      # Verified 2026-10-06: a +304 s offset set by hand was corrected
+      # by this trigger about 10 minutes later.
+      - trigger: state
+        entity_id: binary_sensor.elfin_deye_clock_needs_sync
+        to: "on"
+        for:
+          minutes: 10
+        id: drift_check
+    conditions:
+      # Cooldown, drift_check only: at most one drift-triggered sync per
+      # hour. Stops a loop if a write does not take, and skips the
+      # misread offset in the repeated autumn hour (03:00-04:00 happens
+      # twice; an inverter time inside it is ambiguous and is read as
+      # summer time, so the offset briefly shows +3600 s right after a
+      # correct sync).
+      - condition: template
+        value_template: >
+          {% set last = state_attr('script.elfin_deye_sync_clock_once', 'last_triggered') %}
+          {{ trigger.id != 'drift_check'
+             or last is none
+             or (now() - last).total_seconds() > 3600 }}
+    actions:
+      # After a restart, give Modbus and the gateway time to come up.
+      - if:
+          - condition: trigger
+            id: startup_check
+        then:
+          - delay:
+              seconds: 90
+
+      # Fresh read instead of a value up to one scan_interval old.
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.elfin_deye_clock_raw
+
+      - delay:
+          seconds: 3
+
+      - variables:
+          offset_before: >
+            {{ states('sensor.elfin_deye_clock_offset') | float(0) }}
+
+      - condition: template
+        value_template: "{{ offset_before | abs > 60 }}"
+
+      # The script re-reads the clock itself after writing.
+      - action: script.elfin_deye_sync_clock_once
+
+      - action: logbook.log
+        data:
+          name: Elfin Deye Clock
+          message: >
+            Automatic clock synchronization completed.
+            Offset before: {{ offset_before | round(0) }} seconds.
+            Offset after:
+            {{ states('sensor.elfin_deye_clock_offset') }} seconds.
+          domain: automation
+          entity_id: automation.elfin_deye_automatic_clock_synchronization

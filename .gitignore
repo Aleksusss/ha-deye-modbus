@@ -1,0 +1,21 @@
+# Private copy of the live Home Assistant packages. Never publish.
+source-snapshot/
+
+# Hotfix working copies of live files (contain personal entity ids).
+hotfix/
+
+# Secrets
+secrets.yaml
+.env
+.env.*
+
+# Local backups made while editing
+*.bak
+*.bak.*
+*.bak-*
+*_backup
+
+# OS / editor noise
+.DS_Store
+*.swp
+*~

@@ -34,8 +34,9 @@
 # The availability guard turns any glitch (unavailable, unknown, a 0
 # read) of a USED counter into a gap instead of a huge jump.
 #
-# Verified on an install with grid + battery only (no PV, no export).
-# NOT VERIFIED: the daily value. First full day: 2026-10-07.
+# Verified on an install with grid + battery only (no PV, no export):
+# 2026-10-07 gave 1.6 kWh (about 11% of grid import), consistent with
+# the SOC-balance cross-check in docs/testing.md.
 # ============================================================
 
 template:

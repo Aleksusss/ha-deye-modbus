@@ -19,8 +19,9 @@
 #   3. Readings are snapshotted into automation variables at trigger
 #      time, so the value that passed the check is the value reported.
 #
-# NOT VERIFIED: behaviour on a real sub-second grid dip. A 10-15 s
-# breaker test (2026-10-06) produced both "lost" and "restored".
+# Verified: a 10-15 s breaker test (2026-10-06) and a real 18-minute
+# outage (2026-10-07) both produced "lost" and "restored" on time.
+# NOT VERIFIED: behaviour on a real sub-second grid dip.
 # ============================================================
 
 input_boolean:

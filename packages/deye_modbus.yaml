@@ -330,6 +330,7 @@ modbus:
       # poll catches it. Consequence: outage durations include the
       # reconnect wait, i.e. they measure time actually spent on battery.
       #
+      # Also verified on a real 18-minute outage, 2026-10-07.
       # NOT VERIFIED: behaviour on a real sub-second grid dip.
       # ========================================================
       - name: Elfin Deye Grid Connected

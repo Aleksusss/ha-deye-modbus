@@ -81,7 +81,7 @@ The test install has no panels; these read 0.
 | 177 | 178 | Load L2 power | signed | Verified (0 on single phase) |
 | 178 | 179 | **Load** power | signed | Verified 2026-10-06 |
 | 192 | 193 | AC frequency | 0.01 Hz | Observed |
-| 194 | 195 | Grid connected (relay): 1 / 0 | flag | Verified 2026-10-06 (breaker test) |
+| 194 | 195 | Grid connected (relay): 1 / 0 | flag | Verified (breaker test 2026-10-06, real outage 2026-10-07) |
 
 176 and 177 are not read by the packages; listed for completeness.
 

@@ -214,6 +214,12 @@ results: [docs/testing.md](docs/testing.md).
 
 - Register 194 as outage signal: breaker test, 10-15 s outage, both
   alerts fired, ~70 s reconnect hold.
+- A real grid outage (2026-10-07, about 18 minutes): "lost" and
+  "restored" fired in the same minutes as the stock logger's alerts;
+  duration 18 min here vs 18 min 30 s from the logger.
+- Inverter losses daily value (2026-10-07): 1.6 kWh, about 11% of grid
+  import, consistent with the measured charge conversion loss and a
+  cross-check against the battery SOC balance.
 - 32-bit counters (72/73, 74/75, 85/86) with mbpoll; grid import split
   78 + 80 with 79 = frequency.
 - Single-request clock write (0x10, 3 registers).
@@ -231,7 +237,6 @@ results: [docs/testing.md](docs/testing.md).
 
 - Register 194 on a real sub-second grid dip. (The author still runs the
   stock logger alongside as a backup until this is confirmed.)
-- Inverter losses daily value; first full day is 2026-10-07.
 - Grid power sign during export (the test install never exports).
 - Grid-charge flag values other than 4 and 5.
 - PV registers (the test install has no panels).

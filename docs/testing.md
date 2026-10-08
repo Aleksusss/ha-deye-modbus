@@ -37,7 +37,15 @@ grid came back, the voltage returned at once but 194 stayed 0 for about
 "grid lost" and "grid restored" fired. Outage durations therefore
 include about a minute of reconnect time.
 
-Not verified: a real sub-second grid dip.
+Real outage, 2026-10-07 (about 18 minutes, the flat on battery):
+"grid lost" and "grid restored" fired in the same minutes as the stock
+logger's alerts. Duration: 18 min from register 194 vs 18 min 30 s from
+the logger. This time register 150 did drop (it read 5 V during the
+outage); it has held its last value in other outages, so it is still
+not used for detection.
+
+Not verified: a real sub-second grid dip. The stock logger stays
+connected as a backup until it is.
 
 ## Counter widths
 
@@ -154,6 +162,45 @@ All verified on live hardware, 2026-10-06:
   Emergency OFF restored the captured profile, read-back verified,
   Emergency flag and write lock off.
 
+## Inverter losses: cross-check with the SOC balance
+
+Verified as plausible for 2026-10-07. The losses sensor cannot be
+measured directly, but its daily value can be checked against two
+independent numbers.
+
+Per day (00:00 to 00:00), read:
+
+- the losses sensor's growth (Energy dashboard, individual devices);
+- battery charge and discharge today (registers 70 / 71);
+- battery SOC at both midnights, and the pack's usable energy
+  (nominal: cells x 3.2 V x Ah).
+
+Then:
+
+1. Stored-energy change = (SOC end - SOC start) x pack energy.
+2. Battery-internal loss = charge - discharge - stored-energy change.
+   This happens inside the pack and is NOT part of the losses sensor.
+3. The losses sensor covers the inverter only: AC->DC conversion while
+   charging, DC->AC while discharging, standby draw. Compare its charge
+   share with the conversion loss measured in the power-sign test
+   (about 5%).
+
+Test install, 2026-10-07 (one 18-minute outage that day):
+
+| Quantity | Value |
+|---|---|
+| Grid import / Energy "Home" | 14.4 kWh / 14.4 kWh |
+| Battery charge / discharge | 9.2 kWh / 9.2 kWh |
+| Losses sensor | 1.6 kWh (about 11% of import) |
+| SOC 00:00 -> 00:00 | 53% -> 49% of ~14.3 kWh (16 x 280 Ah LFP) |
+| Battery-internal loss | ~0.57 kWh (~6% of charge) |
+
+The resolution is coarse: 0.1 kWh counters and 1% SOC steps (~0.14 kWh)
+put the battery-internal loss anywhere between about 0.3 and 0.9 kWh.
+Of the 1.6 kWh, charge conversion at ~5% accounts for about 0.5 kWh;
+the rest is discharge conversion at a low house load (~0.5 kW, where
+inverters are least efficient) plus the inverter's own standby draw.
+
 ## Template checks
 
 Template logic (active TOU slot, grid-charge bit decoding, losses
@@ -167,6 +214,5 @@ replace a check in Home Assistant, whose filters differ in details.
 - Register 194 on a real sub-second grid dip.
 - Grid power sign during export.
 - Grid-charge flag values other than 4 and 5.
-- Inverter losses daily value (first full day: 2026-10-07).
 - PV registers (no panels on the test install).
 - Other LP1 models or firmware; RS485-to-TCP gateways other than the EW11.

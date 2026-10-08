@@ -4,6 +4,9 @@ source-snapshot/
 # Hotfix working copies of live files (contain personal entity ids).
 hotfix/
 
+# Session handoff notes (local details).
+HANDOFF.md
+
 # Secrets
 secrets.yaml
 .env

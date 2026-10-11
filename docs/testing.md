@@ -229,7 +229,8 @@ Checked on the live install, 2026-10-11 (desktop Safari on an iMac
   (Mushroom horizontal layout) show the slot time ranges from the
   inverter, and the value follows the drag live (Mushroom re-renders
   its state text on each `current-change`, unlike a card-mod text,
-  which changed only on a state change).
+  which changed only on a state change). The text block is sized to
+  its content, so the slider starts right after the range and value.
 
 ## Inverter losses: cross-check with the SOC balance
 

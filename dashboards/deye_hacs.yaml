@@ -391,6 +391,9 @@ views:
               statistics:
                 type: mean
                 period: 5minute
+              # Legend shows names only (values would be 5-minute means).
+              show:
+                legend_value: false
             series:
               - entity: sensor.elfin_deye_load_power
                 name: Load
@@ -431,6 +434,9 @@ views:
                 decimals: 0
                 apex_config:
                   tickAmount: 4
+            all_series_config:
+              show:
+                legend_value: false
             series:
               - entity: sensor.elfin_deye_battery_soc
                 name: SOC
@@ -888,6 +894,12 @@ views:
     type: sections
     max_columns: 2
     sections:
+      # Two sections = two independent columns. Separate sections per
+      # block would share row heights (the tall Clock sync block left a
+      # gap under Grid outages; dense_section_placement only fills holes
+      # with later sections, it does not shorten rows). On a phone the
+      # left column comes first: outages, BMS, then clock, lifetime.
+      # Left: grid outages + BMS and temperatures.
       - type: grid
         column_span: 1
         cards:
@@ -929,7 +941,43 @@ views:
             name: Last outage
             grid_options:
               columns: full
+          # 7-day grid availability: when the outages happened.
+          - type: history-graph
+            hours_to_show: 168
+            entities:
+              - entity: binary_sensor.elfin_deye_grid_available
+                name: Grid · 7 days
+            grid_options:
+              columns: full
+          - type: heading
+            heading: BMS and temperatures
+            icon: mdi:thermometer
+          - type: tile
+            entity: sensor.elfin_deye_bms_soc
+            name: BMS SOC
+          - type: tile
+            entity: sensor.elfin_deye_bms_voltage
+            name: BMS voltage
+          - type: tile
+            entity: sensor.elfin_deye_bms_charge_current_limit
+            name: Charge limit
+          - type: tile
+            entity: sensor.elfin_deye_bms_discharge_current_limit
+            name: Disch. limit
+          - type: tile
+            entity: sensor.elfin_deye_battery_temperature
+            name: Battery temp
+          - type: tile
+            entity: sensor.elfin_deye_bms_temperature
+            name: BMS temp
+          - type: tile
+            entity: sensor.elfin_deye_dc_temperature
+            name: DC radiator
+          - type: tile
+            entity: sensor.elfin_deye_ac_temperature
+            name: AC temp
 
+      # Right: clock sync + grid and lifetime.
       - type: grid
         column_span: 1
         cards:
@@ -1028,41 +1076,6 @@ views:
                 text: Write Home Assistant's time to the inverter clock?
             grid_options:
               columns: full
-
-      - type: grid
-        column_span: 1
-        cards:
-          - type: heading
-            heading: BMS and temperatures
-            icon: mdi:thermometer
-          - type: tile
-            entity: sensor.elfin_deye_bms_soc
-            name: BMS SOC
-          - type: tile
-            entity: sensor.elfin_deye_bms_voltage
-            name: BMS voltage
-          - type: tile
-            entity: sensor.elfin_deye_bms_charge_current_limit
-            name: Charge limit
-          - type: tile
-            entity: sensor.elfin_deye_bms_discharge_current_limit
-            name: Disch. limit
-          - type: tile
-            entity: sensor.elfin_deye_battery_temperature
-            name: Battery temp
-          - type: tile
-            entity: sensor.elfin_deye_bms_temperature
-            name: BMS temp
-          - type: tile
-            entity: sensor.elfin_deye_dc_temperature
-            name: DC radiator
-          - type: tile
-            entity: sensor.elfin_deye_ac_temperature
-            name: AC temp
-
-      - type: grid
-        column_span: 1
-        cards:
           - type: heading
             heading: Grid and lifetime
             icon: mdi:sine-wave

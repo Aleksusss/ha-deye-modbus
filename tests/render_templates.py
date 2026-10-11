@@ -257,6 +257,18 @@ for ago, want in ((dt.timedelta(days=5, hours=3), "5d ago"), (dt.timedelta(hours
     check(f"last sync {want}", e.r(sync_pri, entity="script.elfin_deye_sync_clock_once"), want)
 check("last sync never", Env({}, now_).r(sync_pri, entity="script.elfin_deye_sync_clock_once"), "never")
 
+# ---- 1e. HACS dashboard structure ----
+diag_secs = hacs["views"][2]["sections"]
+check("diagnostics: two column sections, blocks in order",
+      [[c["heading"] for c in sec["cards"] if c["type"] == "heading"] for sec in diag_secs],
+      [["Grid outages", "BMS and temperatures"], ["Clock sync", "Grid and lifetime"]])
+check("diagnostics: 7-day grid timeline under the outages",
+      [c.get("hours_to_show") for c in diag_secs[0]["cards"] if c["type"] == "history-graph"], [168])
+charts = [c for s_ in hacs["views"][0]["sections"] for c in s_["cards"]
+          if c["type"] == "custom:apexcharts-card" and c.get("chart_type") != "radialBar"]
+check("home charts: legend without values",
+      [c.get("all_series_config", {}).get("show", {}).get("legend_value") for c in charts], [False, False])
+
 # ---- 2. losses: empty pv/export == old formula ----
 loss = load("packages/optional/deye_inverter_losses.yaml")["template"][0]["sensor"][0]
 st = {"sensor.elfin_deye_grid_import_total": "3473.6", "sensor.elfin_deye_battery_charge_total": "1987.8",

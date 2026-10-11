@@ -189,6 +189,41 @@ All verified on live hardware, 2026-10-06:
   Emergency OFF restored the captured profile, read-back verified,
   Emergency flag and write lock off.
 
+- **Emergency cycle from the HACS dashboard** (2026-10-11). Tapped the
+  green Emergency card, confirmed: target SOC went to 100% in all
+  slots, the card turned red. Tapped "Restore normal", confirmed:
+  "Emergency OFF verified; restored SOC: 100/70/40/30/30/100".
+
+## HACS dashboard (`dashboards/deye_hacs.yaml`)
+
+Checked on the live install, 2026-10-11 (desktop Safari on an iMac
+2019, and a phone):
+
+- **TOU bars.** card-mod renders the Jinja-built gradients. A `::before`
+  on the first bar's table (for the "now" time label) made Safari draw
+  that bar with equal columns, and so misplaced the now line; moving
+  the line and label off the table onto the "Inverter" paragraph fixed
+  it, which confirmed the cause: the pseudo-element became an anonymous
+  first table row, and with `table-layout: fixed` the first row sets
+  the column widths. A template check now forbids pseudo-elements on
+  the tables. After the fix the now line sat right after the 19:00
+  boundary at 19:09.
+- **Now / next card** showed slot 4 (15:00-19:00) with the next
+  changes 23:00 -> 100% and 07:00 -> 70%, and switched to slot 5 at
+  the boundary.
+- **Browser load.** Safari CPU was high on the Home view only. By
+  default an apexcharts card redraws on every state change of its
+  entities (the power sensors change every 15 s); with
+  `update_interval` (ring 1 min, charts 5 min) the load became
+  negligible, with the power-flow animation still on.
+- **Power flow direction** correct without `invert_state`: discharging
+  571 W, the home ring was battery-colored.
+- **Diagnostics**: two column sections (separate sections shared row
+  heights and left a gap; `dense_section_placement` does not help, it
+  only back-fills holes); no gap on desktop, logical order on the phone;
+  the 7-day grid ribbon works. Outage statistics matched a real
+  1-minute outage the same day.
+
 ## Inverter losses: cross-check with the SOC balance
 
 Verified as plausible for 2026-10-07. The losses sensor cannot be

@@ -3,8 +3,10 @@
 Home Assistant YAML packages for a **Deye SUN-6K-SG05LP1-EU-AM2-P**
 (6 kW single-phase hybrid) read over RS485 through an **Elfin EW11**
 RS485-to-Modbus-TCP gateway, using only Home Assistant's core Modbus
-integration. No custom components, no HACS, nothing that breaks when
-a third-party integration stops being maintained.
+integration. No custom components, no HACS integrations, nothing that
+breaks when a third-party integration stops being maintained. (An
+optional dashboard uses HACS frontend cards; the packages never need
+them.)
 
 Tested on one inverter. The register map was cross-checked against
 public maps and then verified register by register with `mbpoll`; the
@@ -159,7 +161,7 @@ Core (`packages/`):
 |---|---|
 | `deye_modbus.yaml` | Hub `deye_elfin`, every Modbus sensor, 32-bit grid import |
 | `deye_clock.yaml` | Decoded clock, offset, sync script, automatic sync (daily, startup, drift/DST) |
-| `deye_tou.yaml` | TOU schedule, read-only: times, power, grid-charge flags |
+| `deye_tou.yaml` | TOU schedule, read-only: times, power, grid-charge flags, active slot and its SOC target |
 | `deye_tou_control.yaml` | TOU SOC snapshot, Apply, Emergency 100% with write lock and read-back |
 | `deye_notify.yaml` | The one notification script; edit its targets |
 
@@ -171,7 +173,11 @@ Optional (`packages/optional/`):
 | `deye_inverter_losses.yaml` | Inverter losses as an Energy dashboard device |
 | `deye_pv_split.yaml` | Estimated PV1 / PV2 daily energy |
 
-Example dashboard: `dashboards/deye.yaml` (built-in cards only).
+Dashboards:
+
+- `dashboards/deye.yaml`: built-in cards only; the default.
+- `dashboards/deye_hacs.yaml`: optional, HACS frontend cards; see
+  [Optional HACS dashboard](#optional-hacs-dashboard).
 
 Template logic tests: `tests/render_templates.py`; how to run them is
 in [docs/testing.md](docs/testing.md#template-checks).
@@ -217,6 +223,35 @@ mbpoll -m tcp -a 1 -t 4 -r 185 -c 1 -1 <gateway-ip>
 If your Energy dashboard has solar or grid export configured, set the
 PV and export counters in `deye_inverter_losses.yaml`; see its header.
 
+## Optional HACS dashboard
+
+`dashboards/deye_hacs.yaml` is a Sections dashboard for daily use:
+
+- **Home**: status chips, animated power flow grid / battery / home
+  with an SOC ring, one Emergency card (green off, red on, tap to
+  switch, with confirmation), the current TOU slot and the next
+  changes, 24 h power and SOC charts, energy today.
+- **TOU**: inverter, draft and snapshot as 24 h bars (height = SOC
+  target, blue = grid charge), draft sliders, Apply and Capture.
+- **Diagnostics**: outage statistics with a 7-day grid timeline, clock
+  sync, BMS and temperatures, lifetime counters.
+
+It needs these HACS frontend cards:
+[Mushroom](https://github.com/piitaya/lovelace-mushroom) 5.x (tested
+with 5.2.3; 5.0 changed the template card),
+[card-mod](https://github.com/thomasloven/lovelace-card-mod),
+[stack-in-card](https://github.com/custom-cards/stack-in-card),
+[power-flow-card-plus](https://github.com/flixlix/power-flow-card-plus)
+and [apexcharts-card](https://github.com/RomRider/apexcharts-card).
+It also needs the optional `deye_grid_outage.yaml` and
+`deye_inverter_losses.yaml` packages. Paste it into a new dashboard's
+raw configuration editor; the file header lists the colors and the
+design notes.
+
+<!-- Screenshots (to be added): docs/img/hacs-home.png,
+     docs/img/hacs-tou.png, docs/img/hacs-diagnostics.png,
+     docs/img/hacs-home-phone.png -->
+
 ## Verified on hardware
 
 On the test install, 2026-10-06 unless noted. Procedures and raw
@@ -243,7 +278,8 @@ results: [docs/testing.md](docs/testing.md).
 - TOU block mapping against the LCD.
 - TOU snapshot survives restarts; Apply and Capture blocked during
   Emergency.
-- Emergency ON/OFF full cycle with read-back.
+- Emergency ON/OFF full cycle with read-back; repeated from the HACS
+  dashboard on 2026-10-11.
 - Grid import migration to the 32-bit template sensor without losing
   Energy statistics.
 

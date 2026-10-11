@@ -65,6 +65,15 @@ about 14:12 and the duration was measured from the sensor's
 and set only once per outage. The template logic was checked offline
 (this exact case gives 3h 25m); on live hardware it is NOT verified yet.
 
+Pending live test: switch off the grid-input breaker for about 3
+minutes and restart Home Assistant in the middle, after "grid lost" has
+arrived. Expected: "grid lost" once, no second one after the restart,
+and a "grid restored" message with a duration of about 4 minutes (3
+minutes plus the ~70 s reconnect hold). If the grid returns within the
+2-minute startup grace, that message comes from the startup bootstrap
+at the end of the grace ("seen after a Home Assistant restart") instead
+of the normal "restored" alert; it should still give the exact duration.
+
 ## Counter widths
 
 Verified with mbpoll: battery charge total 72/73 read `19878 / 0`

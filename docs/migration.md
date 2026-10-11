@@ -168,8 +168,16 @@ Result, 2026-10-11:
   and its notification reached every target.
 - No orphaned `deye_elfin_tou_*` entities left in the registry.
 
-Left for later: remove the old dashboard, and delete the moved-out old
-files after a week without problems (rollback needs them until then).
+Follow-ups:
+
+- Remove the old dashboard after a few days with the new one.
+- Delete the moved-out old files and the deploy copy about a week
+  later (2026-10-18) if nothing went wrong; until then they are the
+  rollback.
+- Optional: live test of the outage duration across a restart, see
+  [testing.md](testing.md#grid-connected-flag-register-194--breaker-test).
+- 2026-10-25 morning: DST night logbook check, see
+  [testing.md](testing.md#clock-drift--dst-trigger).
 
 Rollback: move the new files out of `packages/`, move the old ones
 back, restart. The old TOU helpers restore their previous values.

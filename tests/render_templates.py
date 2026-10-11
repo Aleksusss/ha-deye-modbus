@@ -257,6 +257,26 @@ for ago, want in ((dt.timedelta(days=5, hours=3), "5d ago"), (dt.timedelta(hours
     check(f"last sync {want}", e.r(sync_pri, entity="script.elfin_deye_sync_clock_once"), want)
 check("last sync never", Env({}, now_).r(sync_pri, entity="script.elfin_deye_sync_clock_once"), "never")
 
+# ---- 1d2. TOU view: bar fill height = SOC, slider overlay text ----
+e = Env(hacs_states(night, socs), d.replace(hour=12))
+css = e.r(tou_bars["card_mod"]["style"]["ha-markdown$"])
+fills = re.findall(r"table:nth-of-type\(1\) tr:first-child td:nth-child\(\d\) \{ background-image: linear-gradient\(to top, #[0-9a-f]+ (\d+)%", css)
+check("hacs TOU: fill height = SOC over the full cell", fills, ["100", "70", "40", "30", "30", "100"])
+sliders = [c for s_ in hacs["views"][1]["sections"] for c in s_["cards"] if c["type"] == "custom:mushroom-number-card"]
+
+
+def slider_text(card):
+    css_ = Env(hacs_states(night, socs, [100, 70, 50, 30, 30, 100]), d).r(card["card_mod"]["style"], config=card)
+    return re.search(r'content: "([^"]*)"', css_).group(1)
+
+
+check("hacs TOU: slider text = slot range + draft",
+      [slider_text(c) for c in sliders],
+      ["00:00–05:00 · 100%", "05:00–07:00 · 70%", "07:00–17:00 · 50%",
+       "17:00–21:00 · 30%", "21:00–23:00 · 30%", "23:00–00:00 · 100%"])
+check("hacs TOU: sliders have no name row",
+      {(c.get("icon_type"), c.get("primary_info"), c.get("secondary_info")) for c in sliders}, {("none", "none", "none")})
+
 # ---- 1e. HACS dashboard structure ----
 diag_secs = hacs["views"][2]["sections"]
 check("diagnostics: two column sections, blocks in order",

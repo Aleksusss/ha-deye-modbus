@@ -173,6 +173,50 @@ template:
           slot_5_raw: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_5_raw') }}"
           slot_6_raw: "{{ states('sensor.elfin_deye_tou_grid_charge_slot_6_raw') }}"
 
+      # ========================================================
+      # ACTIVE SLOT and its SOC target
+      #
+      # Active = the slot with the latest start time not after now.
+      # Before the earliest start (e.g. 00:30 with slot 1 at 01:00)
+      # the last slot of the day is still running from yesterday.
+      # Uses Home Assistant's clock; the inverter follows its own, which
+      # the clock automation keeps within 60 s.
+      # now() makes the template re-render every minute.
+      # ========================================================
+      - name: Elfin Deye TOU Active Slot
+        unique_id: elfin_deye_tou_active_slot
+        icon: mdi:calendar-clock
+        availability: >
+          {% set ns = namespace(ok=true) %}
+          {% for i in range(1, 7) %}
+            {% set t = states('sensor.elfin_deye_tou_start_time_slot_' ~ i) %}
+            {% if not (t | length == 5 and t[2] == ':') %}{% set ns.ok = false %}{% endif %}
+          {% endfor %}
+          {{ ns.ok }}
+        state: >
+          {% set nowm = now().hour * 60 + now().minute %}
+          {% set ns = namespace(active=0, best=-1, last=0, lastm=-1) %}
+          {% for i in range(1, 7) %}
+            {% set t = states('sensor.elfin_deye_tou_start_time_slot_' ~ i) %}
+            {% set m = (t[:2] | int) * 60 + (t[3:] | int) %}
+            {% if m <= nowm and m > ns.best %}{% set ns.best = m %}{% set ns.active = i %}{% endif %}
+            {% if m > ns.lastm %}{% set ns.lastm = m %}{% set ns.last = i %}{% endif %}
+          {% endfor %}
+          {{ ns.active if ns.active else ns.last }}
+
+      # SOC target of the active slot. Follows Emergency mode on its own:
+      # the slot SOC sensors are read back from the inverter.
+      - name: Elfin Deye TOU Target SOC
+        unique_id: elfin_deye_tou_target_soc
+        icon: mdi:battery-arrow-up-outline
+        unit_of_measurement: "%"
+        state_class: measurement
+        availability: >
+          {{ has_value('sensor.elfin_deye_tou_active_slot')
+             and has_value('sensor.elfin_deye_tou_soc_slot_' ~ states('sensor.elfin_deye_tou_active_slot')) }}
+        state: >
+          {{ states('sensor.elfin_deye_tou_soc_slot_' ~ states('sensor.elfin_deye_tou_active_slot')) | int(0) }}
+
   - binary_sensor:
       # ========================================================
       # GRID CHARGE — per slot (bit 0)

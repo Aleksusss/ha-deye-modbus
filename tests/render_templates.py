@@ -131,6 +131,74 @@ check("TOU 11:00 exact -> slot 3", active(Env(tou_states(std), d.replace(hour=11
 late = ["01:00", "07:00", "11:00", "15:00", "19:00", "23:00"]
 check("TOU 00:30 before first slot -> wraps to 6", active(Env(tou_states(late), d.replace(minute=30)).r(tou_md)), "6")
 
+# ---- 1b. TOU active slot / target SOC sensors (same rule as the table) ----
+tou_pkg = {s["unique_id"]: s for s in load("packages/deye_tou.yaml")["template"][0]["sensor"]}
+act_s, tgt_s = tou_pkg["elfin_deye_tou_active_slot"], tou_pkg["elfin_deye_tou_target_soc"]
+
+
+def slot_at(times, hour, minute=0):
+    return Env(tou_states(times), d.replace(hour=hour, minute=minute)).r(act_s["state"])
+
+
+check("active slot 03:00 -> 1", slot_at(std, 3), "1")
+check("active slot 11:00 exact -> 3", slot_at(std, 11), "3")
+check("active slot 23:30 -> 6", slot_at(std, 23, 30), "6")
+check("active slot 00:30 before first slot -> 6", slot_at(late, 0, 30), "6")
+check("active slot available", Env(tou_states(std), d).r(act_s["availability"]), "True")
+check("active slot unavailable on bad time",
+      Env({**tou_states(std), "sensor.elfin_deye_tou_start_time_slot_4": "unknown"}, d).r(act_s["availability"]), "False")
+check("target SOC = SOC of active slot", Env({**tou_states(std), "sensor.elfin_deye_tou_active_slot": "3"}, d).r(tgt_s["state"]), "30")
+check("target SOC unavailable without active slot",
+      Env({**tou_states(std), "sensor.elfin_deye_tou_active_slot": "unavailable"}, d).r(tgt_s["availability"]), "False")
+
+# ---- 1c. HACS dashboard TOU bars: content cells match card-mod rules ----
+hacs = load("dashboards/deye_hacs.yaml")
+
+
+def bar_cards(view):
+    return [c for s in view["sections"] for c in s["cards"]
+            if c.get("type") == "markdown" and "<table" in c.get("content", "")]
+
+
+home_bar, = bar_cards(hacs["views"][0])
+tou_bars, = bar_cards(hacs["views"][1])
+
+
+def hacs_states(times, socs, drafts=None):
+    st = tou_states(times)
+    for i, v in enumerate(socs, 1):
+        st[f"sensor.elfin_deye_tou_soc_slot_{i}"] = str(v)
+        st[f"input_number.elfin_deye_tou_soc_{i}_draft"] = f"{(drafts or socs)[i - 1]}.0"
+        st[f"input_text.elfin_deye_tou_snapshot_time_{i}"] = times[i - 1]
+        st[f"input_number.elfin_deye_tou_snapshot_soc_{i}"] = f"{v}.0"
+    return st
+
+
+def first_row(html):
+    return html.split("</tr>")[0].count("<td ")
+
+
+socs = [100, 70, 40, 30, 30, 100]
+night = ["00:00", "05:00", "07:00", "17:00", "21:00", "23:00"]
+e = Env(hacs_states(night, socs), d.replace(hour=23, minute=40))
+html, css = e.r(home_bar["content"]), e.r(home_bar["card_mod"]["style"]["ha-markdown$"])
+check("hacs bar: 6 cells", first_row(html), 6)
+check("hacs bar: one css rule per cell", css.count("td:nth-child("), 6)
+check("hacs bar: labels only on slots >= 3 h", html.count("%</td>"), 3)
+check("hacs bar: now marker at 23:40", "left: 98.61%" in css, True)
+e = Env(hacs_states(late, socs), d.replace(hour=0, minute=30))
+html, css = e.r(home_bar["content"]), e.r(home_bar["card_mod"]["style"]["ha-markdown$"])
+check("hacs bar: slot 1 at 01:00 adds a leading slot-6 cell", (first_row(html), css.count("td:nth-child(")), (7, 7))
+check("hacs bar: no times -> message, no rules",
+      (Env({}, d).r(home_bar["content"]), Env({}, d).r(home_bar["card_mod"]["style"]["ha-markdown$"]).count("nth-child")),
+      ("TOU start times are not available yet.", 0))
+e = Env(hacs_states(night, socs, [100, 70, 50, 30, 30, 100]), d)
+html, css = e.r(tou_bars["content"]), e.r(tou_bars["card_mod"]["style"]["ha-markdown$"])
+check("hacs TOU view: three bars + axis", html.count("<table"), 4)
+check("hacs TOU view: one css rule per cell", css.count("td:nth-child("), 18)
+check("hacs TOU view: only draft slot 3 outlined",
+      [ln.split(" {")[0] for ln in css.splitlines() if "dashed" in ln], ["table:nth-of-type(2) td:nth-child(3)"])
+
 # ---- 2. losses: empty pv/export == old formula ----
 loss = load("packages/optional/deye_inverter_losses.yaml")["template"][0]["sensor"][0]
 st = {"sensor.elfin_deye_grid_import_total": "3473.6", "sensor.elfin_deye_battery_charge_total": "1987.8",

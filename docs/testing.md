@@ -231,9 +231,11 @@ inverters are least efficient) plus the inverter's own standby draw.
 ## Template checks
 
 `tests/render_templates.py` loads the templates straight from the
-packages and the dashboard and renders them with plain Jinja and mocked
-states: active TOU slot, grid-charge bit decoding, losses formula, clock
-register encoding and read-back check, outage duration across restarts.
+packages and the dashboards and renders them with plain Jinja and mocked
+states: active TOU slot and target SOC, grid-charge bit decoding, the
+HACS dashboard's TOU bars (cells vs card-mod rules), losses formula,
+clock register encoding and read-back check, outage duration across
+restarts.
 From the repository root:
 
 ```sh

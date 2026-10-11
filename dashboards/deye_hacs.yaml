@@ -1,0 +1,1050 @@
+# ============================================================
+# Optional dashboard — HACS cards. The built-in dashboards/deye.yaml
+# stays the default; use this one only if you have the cards below.
+#
+# HACS frontend cards:
+#   Mushroom 5.x        chips, template cards (5.0 changed the template
+#                       card: `color`, not `icon_color`)
+#   card-mod            backgrounds; Jinja-built TOU bars
+#   stack-in-card       battery ring + status as one card
+#   power-flow-card-plus
+#   apexcharts-card
+#
+# Packages: deye_modbus, deye_tou, deye_tou_control, deye_clock and the
+# optional deye_grid_outage and deye_inverter_losses.
+#
+# Use: Settings -> Dashboards -> Add dashboard -> open it ->
+# Edit -> three dots -> Raw configuration editor -> paste this file.
+#
+# Views:
+#   Home         power flow, Emergency, TOU bar, 24 h charts
+#   TOU          inverter vs draft vs snapshot, edit, capture
+#   Diagnostics  outages, clock sync, BMS, lifetime counters
+#
+# Colors (also in the HTML mockup):
+#   grid #3b82f6 · battery #0d9488 · load #d97706
+#   emergency / fault #ef4444 · OK #22c55e · warning #f97316
+#
+# TOU bars: a markdown card prints an HTML table (one cell per slot,
+# width = slot length); card-mod colors the cells with Jinja-built
+# gradients (height = SOC target, blue = grid charge on). If card-mod
+# does not render the Jinja, the bar shows as a plain row of labels:
+# delete the "TOU bar" markdown cards; the slot cards below carry the
+# same values.
+# ============================================================
+
+views:
+  # ==========================================================
+  # HOME
+  # ==========================================================
+  - title: Home
+    path: home
+    icon: mdi:home-lightning-bolt-outline
+    type: sections
+    max_columns: 2
+    sections:
+      # ---------------- status chips + outage banner ----------------
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:mushroom-chips-card
+            chips:
+              - type: template
+                entity: binary_sensor.elfin_deye_grid_available
+                icon: >-
+                  {{ 'mdi:transmission-tower' if is_state(entity, 'on') else 'mdi:transmission-tower-off' }}
+                icon_color: >-
+                  {{ '#22c55e' if is_state(entity, 'on') else '#ef4444' }}
+                content: >-
+                  {% if is_state(entity, 'on') %}Grid · {{ states('sensor.elfin_deye_ac_l1_voltage') | float(0) | round(0) | int }} V{% else %}No grid{% endif %}
+                tap_action:
+                  action: more-info
+              - type: template
+                entity: sensor.elfin_deye_battery_soc
+                icon: >-
+                  {% set p = states('sensor.elfin_deye_battery_power') | float(0) %}
+                  {{ 'mdi:battery-charging-60' if p < -30 else 'mdi:battery-arrow-down' if p > 30 else 'mdi:battery-60' }}
+                icon_color: "#0d9488"
+                content: >-
+                  {% set p = states('sensor.elfin_deye_battery_power') | float(0) %}
+                  {{ states(entity) | int(0) }}% · {{ 'charging' if p < -30 else 'discharging' if p > 30 else 'idle' }}
+                tap_action:
+                  action: more-info
+              - type: template
+                entity: sensor.elfin_deye_grid_outage_duration_now
+                icon: >-
+                  {{ 'mdi:timer-outline' if is_state('binary_sensor.elfin_deye_grid_available', 'off') else 'mdi:timer-check-outline' }}
+                icon_color: >-
+                  {{ '#ef4444' if is_state('binary_sensor.elfin_deye_grid_available', 'off') else 'disabled' }}
+                content: >-
+                  {% if is_state('binary_sensor.elfin_deye_grid_available', 'off') %}{{ states(entity) }} on battery{% else %}{{ states('sensor.elfin_deye_last_grid_outage_duration') }} last outage{% endif %}
+                tap_action:
+                  action: more-info
+              - type: template
+                entity: input_boolean.elfin_deye_tou_emergency
+                icon: >-
+                  {{ 'mdi:alarm-light' if is_state(entity, 'on') else 'mdi:shield-check-outline' }}
+                icon_color: >-
+                  {{ '#ef4444' if is_state(entity, 'on') else 'disabled' }}
+                content: >-
+                  {{ 'Emergency · 100%' if is_state(entity, 'on') else 'Emergency off' }}
+                tap_action:
+                  action: more-info
+              - type: template
+                entity: sensor.elfin_deye_clock_offset
+                icon: >-
+                  {{ 'mdi:clock-alert-outline' if is_state('binary_sensor.elfin_deye_clock_needs_sync', 'on') else 'mdi:clock-check-outline' }}
+                icon_color: >-
+                  {{ '#f97316' if is_state('binary_sensor.elfin_deye_clock_needs_sync', 'on') else '#22c55e' }}
+                content: >-
+                  {% set o = states(entity) | float(0) | round(0) | int %}
+                  {{ '%+d' | format(o) }} s · {{ 'sync needed' if is_state('binary_sensor.elfin_deye_clock_needs_sync', 'on') else 'clock' }}
+                tap_action:
+                  action: more-info
+          - type: markdown
+            visibility:
+              - condition: state
+                entity: binary_sensor.elfin_deye_grid_available
+                state: "off"
+            content: >
+              <ha-alert alert-type="error" title="No grid for {{ states('sensor.elfin_deye_grid_outage_duration_now') }}">
+              On battery. SOC {{ states('sensor.elfin_deye_battery_soc') }}%,
+              house load {{ states('sensor.elfin_deye_load_power') | float(0) | round(0) | int }} W.
+              </ha-alert>
+            grid_options:
+              columns: full
+
+      # ---------------- hero: power flow ----------------
+      - type: grid
+        column_span: 1
+        cards:
+          # Sign conventions: grid power + = import, battery power
+          # + = discharge (both as the card expects). If a flow runs the
+          # wrong way on your install, add `invert_state: true` to it.
+          - type: custom:power-flow-card-plus
+            clickable_entities: true
+            kilo_threshold: 1000
+            base_decimals: 0
+            kilo_decimals: 2
+            display_zero_lines:
+              mode: grey_out
+            entities:
+              grid:
+                entity: sensor.elfin_deye_grid_power
+                name: Grid
+                color:
+                  consumption: "#3b82f6"
+                  production: "#3b82f6"
+                color_circle: true
+                power_outage:
+                  entity: binary_sensor.elfin_deye_grid_available
+                  state_alert: "off"
+                  label_alert: No grid
+              battery:
+                entity: sensor.elfin_deye_battery_power
+                state_of_charge: sensor.elfin_deye_battery_soc
+                name: Battery
+                color:
+                  consumption: "#0d9488"
+                  production: "#0d9488"
+                color_circle: true
+              home:
+                entity: sensor.elfin_deye_load_power
+                override_state: true
+                name: Home
+            grid_options:
+              columns: full
+
+      # ---------------- hero: SOC ring + battery status ----------------
+      - type: grid
+        column_span: 1
+        cards:
+          - type: custom:stack-in-card
+            cards:
+              - type: custom:apexcharts-card
+                chart_type: radialBar
+                header:
+                  show: false
+                series:
+                  - entity: sensor.elfin_deye_battery_soc
+                    name: Battery
+                    color: "#0d9488"
+                    min: 0
+                    max: 100
+                apex_config:
+                  chart:
+                    height: 230
+                  legend:
+                    show: false
+                  plotOptions:
+                    radialBar:
+                      hollow:
+                        size: 62%
+                      track:
+                        background: rgba(127, 127, 127, 0.18)
+                      dataLabels:
+                        name:
+                          show: false
+                        value:
+                          fontSize: 38px
+                          offsetY: 12
+              - type: custom:mushroom-template-card
+                entity: sensor.elfin_deye_battery_power
+                icon: >-
+                  {% set p = states(entity) | float(0) %}
+                  {{ 'mdi:battery-charging-60' if p < -30 else 'mdi:battery-arrow-down' if p > 30 else 'mdi:battery-60' }}
+                color: "#0d9488"
+                primary: >-
+                  {% set p = states(entity) | float(0) %}
+                  {% if p < -30 %}Charging · {{ (-p / 1000) | round(2) }} kW
+                  {% elif p > 30 %}Discharging · {{ (p / 1000) | round(2) }} kW
+                  {% else %}Idle{% endif %}
+                secondary: >-
+                  {{ states('sensor.elfin_deye_battery_voltage') | float(0) | round(1) }} V ·
+                  {{ states('sensor.elfin_deye_battery_temperature') | float(0) | round(1) }} °C ·
+                  target {{ states('sensor.elfin_deye_tou_target_soc') }}%
+                multiline_secondary: true
+                tap_action:
+                  action: more-info
+            grid_options:
+              columns: full
+
+      # ---------------- Emergency ----------------
+      # One card on screen: three cards, of which exactly one is visible.
+      # Lovelace actions cannot be templated, so the on/off script and its
+      # confirmation text come from which card is shown.
+      # The three share one layout: same fixed height (2 rows), same
+      # border, texts of similar length; only color, icon and text differ,
+      # so switching state does not move the rest of the page.
+      - type: grid
+        column_span: 2
+        cards:
+          # OFF, snapshot present: green, tap enables.
+          - type: custom:mushroom-template-card
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "off"
+              - condition: state
+                entity: binary_sensor.elfin_deye_tou_restore_available
+                state: "on"
+            entity: input_boolean.elfin_deye_tou_emergency
+            icon: mdi:shield-check
+            color: "#22c55e"
+            primary: "Emergency mode: off"
+            secondary: >-
+              Normal profile
+              {% for i in range(1, 7) %}{{ states('input_number.elfin_deye_tou_snapshot_soc_' ~ i) | int(0) }}{{ ' / ' if not loop.last }}{% endfor %}.
+              Tap to hold 100% in all six slots.
+            multiline_secondary: true
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_tou_emergency_on
+              confirmation:
+                text: Enable emergency mode? All six TOU SOC slots will be set to 100%.
+            card_mod:
+              style: |
+                ha-card {
+                  background: rgba(34, 197, 94, 0.12);
+                  border: 1px solid rgba(34, 197, 94, 0.45);
+                }
+            grid_options:
+              columns: full
+              rows: 2
+          # OFF, no snapshot: grey, nothing to tap.
+          - type: custom:mushroom-template-card
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "off"
+              - condition: state
+                entity: binary_sensor.elfin_deye_tou_restore_available
+                state: "off"
+            entity: input_boolean.elfin_deye_tou_emergency
+            icon: mdi:shield-alert-outline
+            color: disabled
+            primary: "Emergency mode: unavailable"
+            secondary: No saved snapshot yet. Capture one on the TOU view to enable this.
+            multiline_secondary: true
+            tap_action:
+              action: none
+            card_mod:
+              style: |
+                ha-card {
+                  background: rgba(127, 127, 127, 0.10);
+                  border: 1px solid rgba(127, 127, 127, 0.35);
+                }
+            grid_options:
+              columns: full
+              rows: 2
+          # ON: red, tap restores.
+          - type: custom:mushroom-template-card
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "on"
+            entity: input_boolean.elfin_deye_tou_emergency
+            icon: mdi:alarm-light
+            color: white
+            primary: "EMERGENCY: all slots at 100%"
+            secondary: >-
+              Since {{ states('input_datetime.elfin_deye_tou_emergency_started')[:16] }}.
+              Tap to restore the saved normal profile.
+            multiline_secondary: true
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_tou_emergency_off
+              confirmation:
+                text: Restore the saved normal TOU SOC profile?
+            card_mod:
+              style: |
+                ha-card {
+                  background: #ef4444;
+                  border: 1px solid #ef4444;
+                  --primary-text-color: #ffffff;
+                  --secondary-text-color: rgba(255, 255, 255, 0.88);
+                }
+            grid_options:
+              columns: full
+              rows: 2
+
+      # ---------------- TOU schedule ----------------
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: TOU schedule · today
+            icon: mdi:calendar-clock
+            badges:
+              - type: entity
+                entity: sensor.elfin_deye_tou_active_slot
+                name: Slot
+                show_state: true
+              - type: entity
+                entity: sensor.elfin_deye_tou_target_soc
+                name: Target
+                show_state: true
+          # TOU bar. Content and style must compute the segments the same
+          # way: one cell per slot in time order, plus a leading cell for
+          # slot 6 when slot 1 starts after 00:00. Labels only on slots of
+          # 3 h or longer (12.5% of the day).
+          - type: markdown
+            content: |-
+              {%- set ns = namespace(m=[], segs=[]) -%}
+              {%- for i in range(1, 7) -%}
+                {%- set t = states('sensor.elfin_deye_tou_start_time_slot_' ~ i) -%}
+                {%- if t | length == 5 and t[2] == ':' -%}
+                  {%- set ns.m = ns.m + [(t[:2] | int) * 60 + (t[3:] | int)] -%}
+                {%- endif -%}
+              {%- endfor -%}
+              {%- if ns.m | length < 6 -%}
+              TOU start times are not available yet.
+              {%- else -%}
+                {%- if ns.m[0] > 0 -%}{%- set ns.segs = [[6, 0, ns.m[0]]] -%}{%- endif -%}
+                {%- for i in range(6) -%}
+                  {%- set ns.segs = ns.segs + [[i + 1, ns.m[i], ns.m[i + 1] if i < 5 else 1440]] -%}
+                {%- endfor -%}
+              <table width="100%"><tr>
+                {%- for s in ns.segs if s[2] > s[1] -%}
+                  {%- set w = (s[2] - s[1]) / 14.4 -%}
+                  <td width="{{ w | round(2) }}%">
+                  {%- if w >= 12.5 -%}
+                    {%- if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ s[0], 'on') %}<ha-icon icon="mdi:flash"></ha-icon>{% endif -%}
+                    {{ states('sensor.elfin_deye_tou_soc_slot_' ~ s[0]) }}%
+                  {%- endif -%}
+                  </td>
+                {%- endfor -%}
+              </tr></table>
+              <table width="100%"><tr><td width="25%">00</td><td width="25%">06</td><td width="25%">12</td><td width="25%">18</td></tr></table>
+              {%- endif -%}
+            card_mod:
+              style:
+                ha-markdown$: |
+                  {%- set ns = namespace(m=[], segs=[]) -%}
+                  {%- for i in range(1, 7) -%}
+                    {%- set t = states('sensor.elfin_deye_tou_start_time_slot_' ~ i) -%}
+                    {%- if t | length == 5 and t[2] == ':' -%}
+                      {%- set ns.m = ns.m + [(t[:2] | int) * 60 + (t[3:] | int)] -%}
+                    {%- endif -%}
+                  {%- endfor -%}
+                  {%- if ns.m | length == 6 -%}
+                    {%- if ns.m[0] > 0 -%}{%- set ns.segs = [[6, 0, ns.m[0]]] -%}{%- endif -%}
+                    {%- for i in range(6) -%}
+                      {%- set ns.segs = ns.segs + [[i + 1, ns.m[i], ns.m[i + 1] if i < 5 else 1440]] -%}
+                    {%- endfor -%}
+                  {%- endif %}
+                  table { display: table !important; width: 100%; table-layout: fixed; border-collapse: separate !important; border-spacing: 2px 0; border: 0 !important; margin: 0; position: relative; }
+                  td { border: 0 !important; }
+                  table:first-of-type td { height: 52px; padding: 4px 6px !important; vertical-align: top; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; border-radius: 6px; background-color: rgba(127, 127, 127, 0.12); --mdc-icon-size: 14px; }
+                  table:last-of-type td { padding: 3px 0 0 !important; font-size: 11px; color: var(--secondary-text-color); }
+                  {%- for s in ns.segs if s[2] > s[1] %}
+                  {%- set h = ((states('sensor.elfin_deye_tou_soc_slot_' ~ s[0]) | int(0)) * 0.62) | round(1) %}
+                  {%- set c = '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ s[0], 'on') else '#0d9488' %}
+                  table:first-of-type td:nth-child({{ loop.index }}) { background-image: linear-gradient(to top, {{ c }} {{ h }}%, transparent {{ h }}%); }
+                  {%- endfor %}
+                  table:first-of-type::after { content: ""; position: absolute; top: -3px; bottom: -3px; width: 2px; left: {{ ((now().hour * 60 + now().minute) / 14.4) | round(2) }}%; background: var(--primary-text-color); }
+                  {%- if is_state('input_boolean.elfin_deye_tou_emergency', 'on') %}
+                  table:first-of-type { outline: 2px solid #ef4444; outline-offset: 3px; border-radius: 8px; }
+                  {%- endif %}
+            grid_options:
+              columns: full
+          # Slot cards: the fallback if the bar above does not render.
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_tou_soc_slot_1
+            primary: "{{ states(entity) }}%"
+            secondary: "1 · {{ states('sensor.elfin_deye_tou_start_time_slot_1') }}"
+            icon: >-
+              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_1', 'on') else 'mdi:battery-clock-outline' }}
+            color: >-
+              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_1', 'on') else '#0d9488' }}
+            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '1') else '' }}"
+            badge_color: "#f97316"
+            tap_action:
+              action: none
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_tou_soc_slot_2
+            primary: "{{ states(entity) }}%"
+            secondary: "2 · {{ states('sensor.elfin_deye_tou_start_time_slot_2') }}"
+            icon: >-
+              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_2', 'on') else 'mdi:battery-clock-outline' }}
+            color: >-
+              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_2', 'on') else '#0d9488' }}
+            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '2') else '' }}"
+            badge_color: "#f97316"
+            tap_action:
+              action: none
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_tou_soc_slot_3
+            primary: "{{ states(entity) }}%"
+            secondary: "3 · {{ states('sensor.elfin_deye_tou_start_time_slot_3') }}"
+            icon: >-
+              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_3', 'on') else 'mdi:battery-clock-outline' }}
+            color: >-
+              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_3', 'on') else '#0d9488' }}
+            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '3') else '' }}"
+            badge_color: "#f97316"
+            tap_action:
+              action: none
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_tou_soc_slot_4
+            primary: "{{ states(entity) }}%"
+            secondary: "4 · {{ states('sensor.elfin_deye_tou_start_time_slot_4') }}"
+            icon: >-
+              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_4', 'on') else 'mdi:battery-clock-outline' }}
+            color: >-
+              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_4', 'on') else '#0d9488' }}
+            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '4') else '' }}"
+            badge_color: "#f97316"
+            tap_action:
+              action: none
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_tou_soc_slot_5
+            primary: "{{ states(entity) }}%"
+            secondary: "5 · {{ states('sensor.elfin_deye_tou_start_time_slot_5') }}"
+            icon: >-
+              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_5', 'on') else 'mdi:battery-clock-outline' }}
+            color: >-
+              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_5', 'on') else '#0d9488' }}
+            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '5') else '' }}"
+            badge_color: "#f97316"
+            tap_action:
+              action: none
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_tou_soc_slot_6
+            primary: "{{ states(entity) }}%"
+            secondary: "6 · {{ states('sensor.elfin_deye_tou_start_time_slot_6') }}"
+            icon: >-
+              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_6', 'on') else 'mdi:battery-clock-outline' }}
+            color: >-
+              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_6', 'on') else '#0d9488' }}
+            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '6') else '' }}"
+            badge_color: "#f97316"
+            tap_action:
+              action: none
+            grid_options:
+              columns: 4
+
+      # ---------------- power, 24 h ----------------
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            header:
+              show: true
+              title: Power · 24 h
+              show_states: true
+              colorize_states: true
+            yaxis:
+              - decimals: 0
+                apex_config:
+                  tickAmount: 5
+            all_series_config:
+              stroke_width: 2
+              curve: smooth
+              statistics:
+                type: mean
+                period: 5minute
+              show:
+                in_header: raw
+            series:
+              - entity: sensor.elfin_deye_load_power
+                name: Load
+                color: "#d97706"
+                type: area
+                opacity: 0.15
+              - entity: sensor.elfin_deye_grid_power
+                name: Grid (+ import)
+                color: "#3b82f6"
+              - entity: sensor.elfin_deye_battery_power
+                name: Battery (+ discharge)
+                color: "#0d9488"
+            apex_config:
+              chart:
+                height: 240
+              legend:
+                show: false
+              grid:
+                borderColor: rgba(127, 127, 127, 0.15)
+            grid_options:
+              columns: full
+
+      # ---------------- SOC, 24 h + grid availability ----------------
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:apexcharts-card
+            graph_span: 24h
+            header:
+              show: true
+              title: Battery SOC · 24 h
+              show_states: true
+              colorize_states: true
+            yaxis:
+              - min: 0
+                max: 100
+                decimals: 0
+                apex_config:
+                  tickAmount: 4
+            series:
+              - entity: sensor.elfin_deye_battery_soc
+                name: SOC
+                color: "#0d9488"
+                type: area
+                opacity: 0.18
+                stroke_width: 2
+                curve: smooth
+                statistics:
+                  type: mean
+                  period: 5minute
+                show:
+                  in_header: raw
+              # History starts when the sensor is installed.
+              - entity: sensor.elfin_deye_tou_target_soc
+                name: TOU target
+                color: "#8b8f96"
+                stroke_width: 2
+                stroke_dash: 4
+                curve: stepline
+                show:
+                  in_header: raw
+            apex_config:
+              chart:
+                height: 210
+              legend:
+                show: false
+              grid:
+                borderColor: rgba(127, 127, 127, 0.15)
+            grid_options:
+              columns: full
+          - type: history-graph
+            hours_to_show: 24
+            entities:
+              - entity: binary_sensor.elfin_deye_grid_available
+                name: Grid
+            grid_options:
+              columns: full
+
+      # ---------------- energy today ----------------
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Energy today
+            icon: mdi:lightning-bolt-circle
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_grid_import_today
+            primary: "{{ states(entity) | float(0) | round(1) }} kWh"
+            secondary: Grid import
+            icon: mdi:transmission-tower-import
+            color: "#3b82f6"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 6
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_load_today
+            primary: "{{ states(entity) | float(0) | round(1) }} kWh"
+            secondary: Load
+            icon: mdi:home-lightning-bolt
+            color: "#d97706"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 6
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_battery_charge_today
+            primary: "{{ states(entity) | float(0) | round(1) }} kWh"
+            secondary: Charged
+            icon: mdi:battery-arrow-up
+            color: "#0d9488"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 6
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_battery_discharge_today
+            primary: "{{ states(entity) | float(0) | round(1) }} kWh"
+            secondary: Discharged
+            icon: mdi:battery-arrow-down
+            color: "#0d9488"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 6
+
+  # ==========================================================
+  # TOU
+  # ==========================================================
+  - title: TOU
+    path: tou
+    icon: mdi:calendar-clock
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Inverter vs draft vs snapshot
+            icon: mdi:compare-horizontal
+          - type: markdown
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "on"
+            content: >
+              <ha-alert alert-type="error" title="Emergency mode active">
+              All six TOU SOC targets are 100% since
+              {{ states('input_datetime.elfin_deye_tou_emergency_started')[:16] }}.
+              Apply is blocked until the normal profile is restored.
+              </ha-alert>
+            grid_options:
+              columns: full
+          # Three bars, same rule as the Home bar. Draft and snapshot use
+          # the inverter's grid-charge flags (the drafts only change SOC).
+          # Draft cells that differ from the inverter get a dashed outline.
+          - type: markdown
+            content: |-
+              {%- set rows = [
+                ['Inverter', 'sensor.elfin_deye_tou_start_time_slot_', 'sensor.elfin_deye_tou_soc_slot_', ''],
+                ['Draft', 'sensor.elfin_deye_tou_start_time_slot_', 'input_number.elfin_deye_tou_soc_', '_draft'],
+                ['Saved snapshot', 'input_text.elfin_deye_tou_snapshot_time_', 'input_number.elfin_deye_tou_snapshot_soc_', ''],
+              ] -%}
+              {%- for r in rows -%}
+                {%- set ns = namespace(m=[], segs=[]) -%}
+                {%- for i in range(1, 7) -%}
+                  {%- set t = states(r[1] ~ i) -%}
+                  {%- if t | length == 5 and t[2] == ':' -%}
+                    {%- set ns.m = ns.m + [(t[:2] | int) * 60 + (t[3:] | int)] -%}
+                  {%- endif -%}
+                {%- endfor -%}
+              {{ r[0] }}{{ '\n\n' }}
+                {%- if ns.m | length < 6 -%}
+              (start times not available){{ '\n\n' }}
+                {%- else -%}
+                  {%- if ns.m[0] > 0 -%}{%- set ns.segs = [[6, 0, ns.m[0]]] -%}{%- endif -%}
+                  {%- for i in range(6) -%}
+                    {%- set ns.segs = ns.segs + [[i + 1, ns.m[i], ns.m[i + 1] if i < 5 else 1440]] -%}
+                  {%- endfor -%}
+              <table width="100%"><tr>
+                  {%- for s in ns.segs if s[2] > s[1] -%}
+                    {%- set w = (s[2] - s[1]) / 14.4 -%}
+                    <td width="{{ w | round(2) }}%">
+                    {%- if w >= 12.5 -%}
+                      {%- if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ s[0], 'on') %}<ha-icon icon="mdi:flash"></ha-icon>{% endif -%}
+                      {{ states(r[2] ~ s[0] ~ r[3]) | int(0) }}%
+                    {%- endif -%}
+                    </td>
+                  {%- endfor -%}
+              </tr></table>{{ '\n\n' }}
+                {%- endif -%}
+              {%- endfor -%}
+              <table width="100%"><tr><td width="25%">00</td><td width="25%">06</td><td width="25%">12</td><td width="25%">18</td></tr></table>
+            card_mod:
+              style:
+                ha-markdown$: |
+                  {%- set rows = [
+                    ['sensor.elfin_deye_tou_start_time_slot_', 'sensor.elfin_deye_tou_soc_slot_', ''],
+                    ['sensor.elfin_deye_tou_start_time_slot_', 'input_number.elfin_deye_tou_soc_', '_draft'],
+                    ['input_text.elfin_deye_tou_snapshot_time_', 'input_number.elfin_deye_tou_snapshot_soc_', ''],
+                  ] -%}
+                  table { display: table !important; width: 100%; table-layout: fixed; border-collapse: separate !important; border-spacing: 2px 0; border: 0 !important; margin: 0; position: relative; }
+                  td { border: 0 !important; }
+                  table:not(:last-of-type) td { height: 40px; padding: 3px 6px !important; vertical-align: top; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; border-radius: 6px; background-color: rgba(127, 127, 127, 0.12); --mdc-icon-size: 14px; }
+                  table:last-of-type td { padding: 3px 0 0 !important; font-size: 11px; color: var(--secondary-text-color); }
+                  p { margin: 10px 0 4px; font-size: 12px; color: var(--secondary-text-color); }
+                  {%- for r in rows %}
+                  {%- set ri = loop.index %}
+                  {%- set ns = namespace(m=[], segs=[]) %}
+                  {%- for i in range(1, 7) %}
+                    {%- set t = states(r[0] ~ i) %}
+                    {%- if t | length == 5 and t[2] == ':' %}
+                      {%- set ns.m = ns.m + [(t[:2] | int) * 60 + (t[3:] | int)] %}
+                    {%- endif %}
+                  {%- endfor %}
+                  {%- if ns.m | length == 6 %}
+                    {%- if ns.m[0] > 0 %}{%- set ns.segs = [[6, 0, ns.m[0]]] %}{%- endif %}
+                    {%- for i in range(6) %}
+                      {%- set ns.segs = ns.segs + [[i + 1, ns.m[i], ns.m[i + 1] if i < 5 else 1440]] %}
+                    {%- endfor %}
+                  {%- endif %}
+                  {%- for s in ns.segs if s[2] > s[1] %}
+                  {%- set soc = states(r[1] ~ s[0] ~ r[2]) | int(0) %}
+                  {%- set h = (soc * 0.6) | round(1) %}
+                  {%- set c = '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ s[0], 'on') else '#0d9488' %}
+                  table:nth-of-type({{ ri }}) td:nth-child({{ loop.index }}) { background-image: linear-gradient(to top, {{ c }} {{ h }}%, transparent {{ h }}%);{% if ri == 2 and soc != states('sensor.elfin_deye_tou_soc_slot_' ~ s[0]) | int(0) %} outline: 2px dashed var(--primary-text-color); outline-offset: -2px;{% endif %} }
+                  {%- endfor %}
+                  {%- endfor %}
+                  table:first-of-type::after { content: ""; position: absolute; top: -3px; bottom: -3px; width: 2px; left: {{ ((now().hour * 60 + now().minute) / 14.4) | round(2) }}%; background: var(--primary-text-color); }
+                  {%- if is_state('input_boolean.elfin_deye_tou_emergency', 'on') %}
+                  table:first-of-type { outline: 2px solid #ef4444; outline-offset: 3px; border-radius: 8px; }
+                  {%- endif %}
+            grid_options:
+              columns: full
+
+      # ---------------- draft editor ----------------
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Normal SOC profile (draft)
+            icon: mdi:pencil
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_number.elfin_deye_tou_soc_1_draft
+                name: Slot 1
+              - entity: input_number.elfin_deye_tou_soc_2_draft
+                name: Slot 2
+              - entity: input_number.elfin_deye_tou_soc_3_draft
+                name: Slot 3
+              - entity: input_number.elfin_deye_tou_soc_4_draft
+                name: Slot 4
+              - entity: input_number.elfin_deye_tou_soc_5_draft
+                name: Slot 5
+              - entity: input_number.elfin_deye_tou_soc_6_draft
+                name: Slot 6
+              - entity: sensor.elfin_deye_tou_soc_draft_status
+                name: Draft status
+          - type: button
+            name: Apply to inverter
+            icon: mdi:content-save-cog
+            show_state: false
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "off"
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_snapshot_valid
+                state: "on"
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_tou_apply_normal_soc_profile
+              confirmation:
+                text: Write the six draft SOC values to the inverter?
+            grid_options:
+              columns: full
+
+      # ---------------- snapshot and safety ----------------
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Saved snapshot
+            icon: mdi:content-save
+          - type: markdown
+            content: >
+              Captured {{ states('input_datetime.elfin_deye_tou_snapshot_captured_at')[:16] }}.
+              Last action: {{ states('input_text.elfin_deye_tou_last_action') }}
+            grid_options:
+              columns: full
+          - type: custom:mushroom-template-card
+            entity: binary_sensor.elfin_deye_tou_write_allowed
+            primary: "{{ 'Yes' if is_state(entity, 'on') else 'No' }}"
+            secondary: Writable
+            icon: mdi:lock-open-check
+            color: "{{ '#22c55e' if is_state(entity, 'on') else '#f97316' }}"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: binary_sensor.elfin_deye_tou_restore_available
+            primary: "{{ 'Yes' if is_state(entity, 'on') else 'No' }}"
+            secondary: Restore
+            icon: mdi:backup-restore
+            color: "{{ '#22c55e' if is_state(entity, 'on') else '#f97316' }}"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: input_boolean.elfin_deye_tou_write_lock
+            primary: "{{ 'On' if is_state(entity, 'on') else 'Off' }}"
+            secondary: Write lock
+            icon: mdi:lock
+            color: "{{ '#f97316' if is_state(entity, 'on') else 'disabled' }}"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 4
+          - type: button
+            name: Capture from inverter
+            icon: mdi:content-save-outline
+            show_state: false
+            visibility:
+              - condition: state
+                entity: input_boolean.elfin_deye_tou_emergency
+                state: "off"
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_tou_capture_snapshot
+              confirmation:
+                text: >-
+                  Read the current SOC profile from the inverter and replace
+                  the saved snapshot and the drafts?
+            grid_options:
+              columns: full
+
+  # ==========================================================
+  # DIAGNOSTICS
+  # ==========================================================
+  - title: Diagnostics
+    path: diagnostics
+    icon: mdi:tools
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Grid outages
+            icon: mdi:history
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_grid_outage_time_today_formatted
+            primary: "{{ states(entity) }}"
+            secondary: "Today · {{ states('sensor.elfin_deye_grid_outage_count_today') | int(0) }}"
+            icon: mdi:transmission-tower-off
+            color: "{{ '#ef4444' if states('sensor.elfin_deye_grid_outage_count_today') | int(0) > 0 else 'disabled' }}"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_grid_outage_time_week_formatted
+            primary: "{{ states(entity) }}"
+            secondary: "Week · {{ states('sensor.elfin_deye_grid_outage_count_week') | int(0) }}"
+            icon: mdi:transmission-tower-off
+            color: "{{ '#ef4444' if states('sensor.elfin_deye_grid_outage_count_week') | int(0) > 0 else 'disabled' }}"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_grid_outage_time_month_formatted
+            primary: "{{ states(entity) }}"
+            secondary: "Month · {{ states('sensor.elfin_deye_grid_outage_count_month') | int(0) }}"
+            icon: mdi:transmission-tower-off
+            color: "{{ '#ef4444' if states('sensor.elfin_deye_grid_outage_count_month') | int(0) > 0 else 'disabled' }}"
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 4
+          - type: tile
+            entity: sensor.elfin_deye_last_grid_outage_duration
+            name: Last outage
+            grid_options:
+              columns: full
+
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Clock sync
+            icon: mdi:clock-check-outline
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_clock_display
+            primary: "{{ states(entity) }}"
+            secondary: Clock
+            icon: mdi:clock-outline
+            color: disabled
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_clock_offset
+            primary: "{{ '%+d' | format(states(entity) | float(0) | round(0) | int) }} s"
+            secondary: Offset
+            icon: >-
+              {{ 'mdi:clock-alert-outline' if is_state('binary_sensor.elfin_deye_clock_needs_sync', 'on') else 'mdi:clock-check-outline' }}
+            color: >-
+              {{ '#f97316' if is_state('binary_sensor.elfin_deye_clock_needs_sync', 'on') else '#22c55e' }}
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 4
+          - type: custom:mushroom-template-card
+            entity: script.elfin_deye_sync_clock_once
+            primary: >-
+              {% set t = state_attr(entity, 'last_triggered') %}
+              {{ time_since(t) ~ ' ago' if t else 'never' }}
+            secondary: Last sync
+            icon: mdi:clock-check-outline
+            color: disabled
+            tap_action:
+              action: more-info
+            grid_options:
+              columns: 4
+          - type: custom:apexcharts-card
+            graph_span: 7d
+            header:
+              show: false
+            yaxis:
+              - decimals: 0
+                apex_config:
+                  tickAmount: 2
+            series:
+              - entity: sensor.elfin_deye_clock_offset
+                name: Offset
+                color: "#8b8f96"
+                stroke_width: 2
+                curve: smooth
+                group_by:
+                  func: avg
+                  duration: 1h
+            apex_config:
+              chart:
+                height: 110
+              legend:
+                show: false
+              grid:
+                borderColor: rgba(127, 127, 127, 0.15)
+            grid_options:
+              columns: full
+          - type: markdown
+            content: >
+              {% set s = state_attr('script.elfin_deye_sync_clock_once', 'last_triggered') %}
+              {% set c = state_attr('automation.elfin_deye_automatic_clock_synchronization', 'last_triggered') %}
+              Offset, 7 days. Checked daily at 03:05, after a restart and
+              after 10 min over 60 s; written only when |offset| > 60 s.
+              Last check {{ as_timestamp(c) | timestamp_custom('%Y-%m-%d %H:%M') if c else 'never' }},
+              last sync {{ as_timestamp(s) | timestamp_custom('%Y-%m-%d %H:%M') if s else 'never' }}.
+            grid_options:
+              columns: full
+          - type: button
+            name: Sync clock now
+            icon: mdi:clock-sync-outline
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.elfin_deye_sync_clock_once
+              confirmation:
+                text: Write Home Assistant's time to the inverter clock?
+            grid_options:
+              columns: full
+
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: BMS and temperatures
+            icon: mdi:thermometer
+          - type: tile
+            entity: sensor.elfin_deye_bms_soc
+            name: BMS SOC
+          - type: tile
+            entity: sensor.elfin_deye_bms_voltage
+            name: BMS voltage
+          - type: tile
+            entity: sensor.elfin_deye_bms_charge_current_limit
+            name: Charge limit
+          - type: tile
+            entity: sensor.elfin_deye_bms_discharge_current_limit
+            name: Disch. limit
+          - type: tile
+            entity: sensor.elfin_deye_battery_temperature
+            name: Battery temp
+          - type: tile
+            entity: sensor.elfin_deye_bms_temperature
+            name: BMS temp
+          - type: tile
+            entity: sensor.elfin_deye_dc_temperature
+            name: DC radiator
+          - type: tile
+            entity: sensor.elfin_deye_ac_temperature
+            name: AC temp
+
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Grid and lifetime
+            icon: mdi:sine-wave
+          - type: tile
+            entity: sensor.elfin_deye_ac_l1_voltage
+            name: Grid voltage
+          - type: tile
+            entity: sensor.elfin_deye_ac_frequency
+            name: Frequency
+          - type: tile
+            entity: sensor.elfin_deye_grid_import_total
+            name: Import total
+          - type: tile
+            entity: sensor.elfin_deye_load_total
+            name: Load total
+          # Today's growth of the lifetime counter, from long-term
+          # statistics: no separate "losses today" entity needed.
+          - type: statistic
+            entity: sensor.elfin_deye_inverter_losses_total
+            name: Losses today
+            period:
+              calendar:
+                period: day
+                offset: 0
+            stat_type: change
+          - type: tile
+            entity: sensor.elfin_deye_inverter_losses_total
+            name: Losses total

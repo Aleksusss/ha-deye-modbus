@@ -661,160 +661,126 @@ views:
           - type: heading
             heading: Normal SOC profile (draft)
             icon: mdi:pencil
-          # Draft sliders: slider only (Mushroom hides the name row when
-          # icon, primary and secondary are all "none"). card-mod overlays
-          # the slot's time range (inverter times) and the draft value on
-          # the slider; the halo keeps it readable on the filled and the
-          # empty part; pointer-events: none keeps the slider draggable.
-          # The value updates when the slider is released.
+          # Draft sliders, Mushroom horizontal layout: primary = the slot's
+          # time range (inverter times), secondary = Mushroom's own value,
+          # slider on the right. The value is live while dragging: the
+          # slider fires current-change on panmove and the card re-renders
+          # its state text from it (Mushroom 5.2.3 slider.ts,
+          # number-value-control.ts, number-card.ts). `name` is not
+          # templatable, so card-mod hides it and draws the range in
+          # mushroom-state-info's .primary instead.
           - type: custom:mushroom-number-card
             entity: input_number.elfin_deye_tou_soc_1_draft
+            name: " "
             icon_type: none
-            primary_info: none
-            secondary_info: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: state
             display_mode: slider
             icon_color: "#0d9488"
             card_mod:
-              style: |
-                .actions { position: relative; }
-                .actions::after {
-                  content: "{{ states('sensor.elfin_deye_tou_start_time_slot_1') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_2') }} · {{ states(config.entity) | int(0) }}%";
-                  position: absolute;
-                  inset: 0;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  pointer-events: none;
-                  font-size: 13px;
-                  font-weight: 600;
-                  color: var(--primary-text-color);
-                  text-shadow: 0 0 3px var(--card-background-color, #000), 0 0 6px var(--card-background-color, #000);
-                }
+              style:
+                mushroom-state-info$: |
+                  .primary { font-size: 0 !important; }
+                  .primary::before {
+                    content: "{{ states('sensor.elfin_deye_tou_start_time_slot_1') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_2') }}";
+                    font-size: var(--card-primary-font-size, 14px);
+                  }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
             entity: input_number.elfin_deye_tou_soc_2_draft
+            name: " "
             icon_type: none
-            primary_info: none
-            secondary_info: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: state
             display_mode: slider
             icon_color: "#0d9488"
             card_mod:
-              style: |
-                .actions { position: relative; }
-                .actions::after {
-                  content: "{{ states('sensor.elfin_deye_tou_start_time_slot_2') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_3') }} · {{ states(config.entity) | int(0) }}%";
-                  position: absolute;
-                  inset: 0;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  pointer-events: none;
-                  font-size: 13px;
-                  font-weight: 600;
-                  color: var(--primary-text-color);
-                  text-shadow: 0 0 3px var(--card-background-color, #000), 0 0 6px var(--card-background-color, #000);
-                }
+              style:
+                mushroom-state-info$: |
+                  .primary { font-size: 0 !important; }
+                  .primary::before {
+                    content: "{{ states('sensor.elfin_deye_tou_start_time_slot_2') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_3') }}";
+                    font-size: var(--card-primary-font-size, 14px);
+                  }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
             entity: input_number.elfin_deye_tou_soc_3_draft
+            name: " "
             icon_type: none
-            primary_info: none
-            secondary_info: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: state
             display_mode: slider
             icon_color: "#0d9488"
             card_mod:
-              style: |
-                .actions { position: relative; }
-                .actions::after {
-                  content: "{{ states('sensor.elfin_deye_tou_start_time_slot_3') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_4') }} · {{ states(config.entity) | int(0) }}%";
-                  position: absolute;
-                  inset: 0;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  pointer-events: none;
-                  font-size: 13px;
-                  font-weight: 600;
-                  color: var(--primary-text-color);
-                  text-shadow: 0 0 3px var(--card-background-color, #000), 0 0 6px var(--card-background-color, #000);
-                }
+              style:
+                mushroom-state-info$: |
+                  .primary { font-size: 0 !important; }
+                  .primary::before {
+                    content: "{{ states('sensor.elfin_deye_tou_start_time_slot_3') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_4') }}";
+                    font-size: var(--card-primary-font-size, 14px);
+                  }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
             entity: input_number.elfin_deye_tou_soc_4_draft
+            name: " "
             icon_type: none
-            primary_info: none
-            secondary_info: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: state
             display_mode: slider
             icon_color: "#0d9488"
             card_mod:
-              style: |
-                .actions { position: relative; }
-                .actions::after {
-                  content: "{{ states('sensor.elfin_deye_tou_start_time_slot_4') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_5') }} · {{ states(config.entity) | int(0) }}%";
-                  position: absolute;
-                  inset: 0;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  pointer-events: none;
-                  font-size: 13px;
-                  font-weight: 600;
-                  color: var(--primary-text-color);
-                  text-shadow: 0 0 3px var(--card-background-color, #000), 0 0 6px var(--card-background-color, #000);
-                }
+              style:
+                mushroom-state-info$: |
+                  .primary { font-size: 0 !important; }
+                  .primary::before {
+                    content: "{{ states('sensor.elfin_deye_tou_start_time_slot_4') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_5') }}";
+                    font-size: var(--card-primary-font-size, 14px);
+                  }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
             entity: input_number.elfin_deye_tou_soc_5_draft
+            name: " "
             icon_type: none
-            primary_info: none
-            secondary_info: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: state
             display_mode: slider
             icon_color: "#0d9488"
             card_mod:
-              style: |
-                .actions { position: relative; }
-                .actions::after {
-                  content: "{{ states('sensor.elfin_deye_tou_start_time_slot_5') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_6') }} · {{ states(config.entity) | int(0) }}%";
-                  position: absolute;
-                  inset: 0;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  pointer-events: none;
-                  font-size: 13px;
-                  font-weight: 600;
-                  color: var(--primary-text-color);
-                  text-shadow: 0 0 3px var(--card-background-color, #000), 0 0 6px var(--card-background-color, #000);
-                }
+              style:
+                mushroom-state-info$: |
+                  .primary { font-size: 0 !important; }
+                  .primary::before {
+                    content: "{{ states('sensor.elfin_deye_tou_start_time_slot_5') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_6') }}";
+                    font-size: var(--card-primary-font-size, 14px);
+                  }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
             entity: input_number.elfin_deye_tou_soc_6_draft
+            name: " "
             icon_type: none
-            primary_info: none
-            secondary_info: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: state
             display_mode: slider
             icon_color: "#0d9488"
             card_mod:
-              style: |
-                .actions { position: relative; }
-                .actions::after {
-                  content: "{{ states('sensor.elfin_deye_tou_start_time_slot_6') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_1') }} · {{ states(config.entity) | int(0) }}%";
-                  position: absolute;
-                  inset: 0;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  pointer-events: none;
-                  font-size: 13px;
-                  font-weight: 600;
-                  color: var(--primary-text-color);
-                  text-shadow: 0 0 3px var(--card-background-color, #000), 0 0 6px var(--card-background-color, #000);
-                }
+              style:
+                mushroom-state-info$: |
+                  .primary { font-size: 0 !important; }
+                  .primary::before {
+                    content: "{{ states('sensor.elfin_deye_tou_start_time_slot_6') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_1') }}";
+                    font-size: var(--card-primary-font-size, 14px);
+                  }
             grid_options:
               columns: full
           - type: custom:mushroom-template-card

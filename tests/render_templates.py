@@ -265,17 +265,17 @@ check("hacs TOU: fill height = SOC over the full cell", fills, ["100", "70", "40
 sliders = [c for s_ in hacs["views"][1]["sections"] for c in s_["cards"] if c["type"] == "custom:mushroom-number-card"]
 
 
-def slider_text(card):
-    css_ = Env(hacs_states(night, socs, [100, 70, 50, 30, 30, 100]), d).r(card["card_mod"]["style"], config=card)
+def slider_range(card):
+    css_ = Env(hacs_states(night, socs), d).r(card["card_mod"]["style"]["mushroom-state-info$"], config=card)
     return re.search(r'content: "([^"]*)"', css_).group(1)
 
 
-check("hacs TOU: slider text = slot range + draft",
-      [slider_text(c) for c in sliders],
-      ["00:00–05:00 · 100%", "05:00–07:00 · 70%", "07:00–17:00 · 50%",
-       "17:00–21:00 · 30%", "21:00–23:00 · 30%", "23:00–00:00 · 100%"])
-check("hacs TOU: sliders have no name row",
-      {(c.get("icon_type"), c.get("primary_info"), c.get("secondary_info")) for c in sliders}, {("none", "none", "none")})
+check("hacs TOU: slider primary = slot time range",
+      [slider_range(c) for c in sliders],
+      ["00:00–05:00", "05:00–07:00", "07:00–17:00", "17:00–21:00", "21:00–23:00", "23:00–00:00"])
+check("hacs TOU: sliders horizontal, live native value as secondary",
+      {(c.get("layout"), c.get("icon_type"), c.get("primary_info"), c.get("secondary_info")) for c in sliders},
+      {("horizontal", "none", "name", "state")})
 
 # ---- 1e. HACS dashboard structure ----
 diag_secs = hacs["views"][2]["sections"]

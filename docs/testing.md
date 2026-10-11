@@ -224,6 +224,13 @@ Checked on the live install, 2026-10-11 (desktop Safari on an iMac
   the 7-day grid ribbon works. Outage statistics matched a real
   1-minute outage the same day.
 
+- **TOU view, later the same day.** The bar fills grow from the bottom
+  over the full cell height (100% = full cell). The draft sliders
+  (Mushroom horizontal layout) show the slot time ranges from the
+  inverter, and the value follows the drag live (Mushroom re-renders
+  its state text on each `current-change`, unlike a card-mod text,
+  which changed only on a state change).
+
 ## Inverter losses: cross-check with the SOC balance
 
 Verified as plausible for 2026-10-07. The losses sensor cannot be

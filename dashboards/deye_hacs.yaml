@@ -25,12 +25,14 @@
 #   grid #3b82f6 · battery #0d9488 · load #d97706
 #   emergency / fault #ef4444 · OK #22c55e · warning #f97316
 #
-# TOU bars: a markdown card prints an HTML table (one cell per slot,
-# width = slot length); card-mod colors the cells with Jinja-built
-# gradients (height = SOC target, blue = grid charge on). If card-mod
-# does not render the Jinja, the bar shows as a plain row of labels:
-# delete the "TOU bar" markdown cards; the slot cards below carry the
-# same values.
+# TOU bars (TOU view): a markdown card prints HTML tables (one cell per
+# slot, width = slot length, start times underneath); card-mod colors
+# the cells with Jinja-built gradients (height = SOC target, blue = grid
+# charge on) and draws the "now" line with the time.
+#
+# Browser load: apexcharts cards redraw on every state change of their
+# entities by default (the power sensors change every 15 s), so each
+# chart has an update_interval instead.
 # ============================================================
 
 views:
@@ -165,6 +167,7 @@ views:
             cards:
               - type: custom:apexcharts-card
                 chart_type: radialBar
+                update_interval: 1min
                 header:
                   show: false
                 series:
@@ -314,189 +317,75 @@ views:
               columns: full
               rows: 2
 
-      # ---------------- TOU schedule ----------------
+      # ---------------- TOU now / next ----------------
+      # Current slot with its range and target; then the next one or two
+      # boundaries where the target or grid charge actually changes
+      # (a boundary with identical settings is skipped). Full schedule:
+      # TOU view.
       - type: grid
         column_span: 2
         cards:
-          - type: heading
-            heading: TOU schedule · today
-            icon: mdi:calendar-clock
-            badges:
-              - type: entity
-                entity: sensor.elfin_deye_tou_active_slot
-                name: Slot
-                show_state: true
-              - type: entity
-                entity: sensor.elfin_deye_tou_target_soc
-                name: Target
-                show_state: true
-          # TOU bar. Content and style must compute the segments the same
-          # way: one cell per slot in time order, plus a leading cell for
-          # slot 6 when slot 1 starts after 00:00. Labels only on slots of
-          # 3 h or longer (12.5% of the day).
-          - type: markdown
-            content: |-
-              {%- set ns = namespace(m=[], segs=[]) -%}
-              {%- for i in range(1, 7) -%}
-                {%- set t = states('sensor.elfin_deye_tou_start_time_slot_' ~ i) -%}
-                {%- if t | length == 5 and t[2] == ':' -%}
-                  {%- set ns.m = ns.m + [(t[:2] | int) * 60 + (t[3:] | int)] -%}
-                {%- endif -%}
-              {%- endfor -%}
-              {%- if ns.m | length < 6 -%}
-              TOU start times are not available yet.
+          - type: custom:mushroom-template-card
+            entity: sensor.elfin_deye_tou_active_slot
+            icon: >-
+              {%- set a = states(entity) | int(0) -%}
+              {{ 'mdi:transmission-tower-import' if a and is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ a, 'on') else 'mdi:calendar-clock' }}
+            color: >-
+              {%- set a = states(entity) | int(0) -%}
+              {{ '#3b82f6' if a and is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ a, 'on') else '#0d9488' }}
+            primary: >-
+              {%- set a = states(entity) | int(0) -%}
+              {%- if a < 1 or a > 6 -%}TOU schedule not available
               {%- else -%}
-                {%- if ns.m[0] > 0 -%}{%- set ns.segs = [[6, 0, ns.m[0]]] -%}{%- endif -%}
-                {%- for i in range(6) -%}
-                  {%- set ns.segs = ns.segs + [[i + 1, ns.m[i], ns.m[i + 1] if i < 5 else 1440]] -%}
-                {%- endfor -%}
-              <table width="100%"><tr>
-                {%- for s in ns.segs if s[2] > s[1] -%}
-                  {%- set w = (s[2] - s[1]) / 14.4 -%}
-                  <td width="{{ w | round(2) }}%">
-                  {%- if w >= 12.5 -%}
-                    {%- if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ s[0], 'on') %}<ha-icon icon="mdi:flash"></ha-icon>{% endif -%}
-                    {{ states('sensor.elfin_deye_tou_soc_slot_' ~ s[0]) }}%
-                  {%- endif -%}
-                  </td>
-                {%- endfor -%}
-              </tr></table>
-              <table width="100%"><tr><td width="25%">00</td><td width="25%">06</td><td width="25%">12</td><td width="25%">18</td></tr></table>
+              Slot {{ a }} · {{ states('sensor.elfin_deye_tou_start_time_slot_' ~ a) }}–{{ states('sensor.elfin_deye_tou_start_time_slot_' ~ (a % 6 + 1)) }} · target {{ states('sensor.elfin_deye_tou_soc_slot_' ~ a) }}%
+              {{- ', grid charge' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ a, 'on') }}
               {%- endif -%}
-            card_mod:
-              style:
-                ha-markdown$: |
-                  {%- set ns = namespace(m=[], segs=[]) -%}
-                  {%- for i in range(1, 7) -%}
-                    {%- set t = states('sensor.elfin_deye_tou_start_time_slot_' ~ i) -%}
-                    {%- if t | length == 5 and t[2] == ':' -%}
-                      {%- set ns.m = ns.m + [(t[:2] | int) * 60 + (t[3:] | int)] -%}
-                    {%- endif -%}
-                  {%- endfor -%}
-                  {%- if ns.m | length == 6 -%}
-                    {%- if ns.m[0] > 0 -%}{%- set ns.segs = [[6, 0, ns.m[0]]] -%}{%- endif -%}
-                    {%- for i in range(6) -%}
-                      {%- set ns.segs = ns.segs + [[i + 1, ns.m[i], ns.m[i + 1] if i < 5 else 1440]] -%}
-                    {%- endfor -%}
-                  {%- endif %}
-                  table { display: table !important; width: 100%; table-layout: fixed; border-collapse: separate !important; border-spacing: 2px 0; border: 0 !important; margin: 0; position: relative; }
-                  td { border: 0 !important; }
-                  table:first-of-type td { height: 52px; padding: 4px 6px !important; vertical-align: top; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; border-radius: 6px; background-color: rgba(127, 127, 127, 0.12); --mdc-icon-size: 14px; }
-                  table:last-of-type td { padding: 3px 0 0 !important; font-size: 11px; color: var(--secondary-text-color); }
-                  {%- for s in ns.segs if s[2] > s[1] %}
-                  {%- set h = ((states('sensor.elfin_deye_tou_soc_slot_' ~ s[0]) | int(0)) * 0.62) | round(1) %}
-                  {%- set c = '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ s[0], 'on') else '#0d9488' %}
-                  table:first-of-type td:nth-child({{ loop.index }}) { background-image: linear-gradient(to top, {{ c }} {{ h }}%, transparent {{ h }}%); }
-                  {%- endfor %}
-                  table:first-of-type::after { content: ""; position: absolute; top: -3px; bottom: -3px; width: 2px; left: {{ ((now().hour * 60 + now().minute) / 14.4) | round(2) }}%; background: var(--primary-text-color); }
-                  {%- if is_state('input_boolean.elfin_deye_tou_emergency', 'on') %}
-                  table:first-of-type { outline: 2px solid #ef4444; outline-offset: 3px; border-radius: 8px; }
-                  {%- endif %}
+            secondary: >-
+              {%- set a = states(entity) | int(0) -%}
+              {%- if 1 <= a <= 6 -%}
+                {%- set ns = namespace(soc=states('sensor.elfin_deye_tou_soc_slot_' ~ a) | int(-1),
+                                       gc=is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ a, 'on'), out=[]) -%}
+                {%- for k in range(1, 6) -%}
+                  {%- set i = (a - 1 + k) % 6 + 1 -%}
+                  {%- set soc = states('sensor.elfin_deye_tou_soc_slot_' ~ i) | int(-1) -%}
+                  {%- set gc = is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ i, 'on') -%}
+                  {%- if (soc != ns.soc or gc != ns.gc) and ns.out | count < 2 -%}
+                    {%- set ns.out = ns.out + [states('sensor.elfin_deye_tou_start_time_slot_' ~ i) ~ ' → ' ~ soc ~ '%' ~ (' (grid charge)' if gc else '')] -%}
+                  {%- endif -%}
+                  {%- set ns.soc = soc -%}
+                  {%- set ns.gc = gc -%}
+                {%- endfor -%}
+                {{ 'Next: ' ~ ns.out | join(' · ') if ns.out else 'No changes in the next 24 h' }}
+              {%- endif -%}
+            multiline_secondary: true
+            tap_action:
+              action: none
             grid_options:
               columns: full
-          # Slot cards: the fallback if the bar above does not render.
-          - type: custom:mushroom-template-card
-            entity: sensor.elfin_deye_tou_soc_slot_1
-            primary: "{{ states(entity) }}%"
-            secondary: "1 · {{ states('sensor.elfin_deye_tou_start_time_slot_1') }}"
-            icon: >-
-              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_1', 'on') else 'mdi:battery-clock-outline' }}
-            color: >-
-              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_1', 'on') else '#0d9488' }}
-            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '1') else '' }}"
-            badge_color: "#f97316"
-            tap_action:
-              action: none
-            grid_options:
-              columns: 4
-          - type: custom:mushroom-template-card
-            entity: sensor.elfin_deye_tou_soc_slot_2
-            primary: "{{ states(entity) }}%"
-            secondary: "2 · {{ states('sensor.elfin_deye_tou_start_time_slot_2') }}"
-            icon: >-
-              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_2', 'on') else 'mdi:battery-clock-outline' }}
-            color: >-
-              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_2', 'on') else '#0d9488' }}
-            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '2') else '' }}"
-            badge_color: "#f97316"
-            tap_action:
-              action: none
-            grid_options:
-              columns: 4
-          - type: custom:mushroom-template-card
-            entity: sensor.elfin_deye_tou_soc_slot_3
-            primary: "{{ states(entity) }}%"
-            secondary: "3 · {{ states('sensor.elfin_deye_tou_start_time_slot_3') }}"
-            icon: >-
-              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_3', 'on') else 'mdi:battery-clock-outline' }}
-            color: >-
-              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_3', 'on') else '#0d9488' }}
-            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '3') else '' }}"
-            badge_color: "#f97316"
-            tap_action:
-              action: none
-            grid_options:
-              columns: 4
-          - type: custom:mushroom-template-card
-            entity: sensor.elfin_deye_tou_soc_slot_4
-            primary: "{{ states(entity) }}%"
-            secondary: "4 · {{ states('sensor.elfin_deye_tou_start_time_slot_4') }}"
-            icon: >-
-              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_4', 'on') else 'mdi:battery-clock-outline' }}
-            color: >-
-              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_4', 'on') else '#0d9488' }}
-            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '4') else '' }}"
-            badge_color: "#f97316"
-            tap_action:
-              action: none
-            grid_options:
-              columns: 4
-          - type: custom:mushroom-template-card
-            entity: sensor.elfin_deye_tou_soc_slot_5
-            primary: "{{ states(entity) }}%"
-            secondary: "5 · {{ states('sensor.elfin_deye_tou_start_time_slot_5') }}"
-            icon: >-
-              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_5', 'on') else 'mdi:battery-clock-outline' }}
-            color: >-
-              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_5', 'on') else '#0d9488' }}
-            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '5') else '' }}"
-            badge_color: "#f97316"
-            tap_action:
-              action: none
-            grid_options:
-              columns: 4
-          - type: custom:mushroom-template-card
-            entity: sensor.elfin_deye_tou_soc_slot_6
-            primary: "{{ states(entity) }}%"
-            secondary: "6 · {{ states('sensor.elfin_deye_tou_start_time_slot_6') }}"
-            icon: >-
-              {{ 'mdi:transmission-tower-import' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_6', 'on') else 'mdi:battery-clock-outline' }}
-            color: >-
-              {{ '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_6', 'on') else '#0d9488' }}
-            badge_icon: "{{ 'mdi:play' if is_state('sensor.elfin_deye_tou_active_slot', '6') else '' }}"
-            badge_color: "#f97316"
-            tap_action:
-              action: none
-            grid_options:
-              columns: 4
 
       # ---------------- power, 24 h ----------------
       - type: grid
         column_span: 2
         cards:
+          # Redraw every 5 min (the statistics are 5-minute means); the
+          # header values refresh at the same rate, the flow card is live.
           - type: custom:apexcharts-card
             graph_span: 24h
+            update_interval: 5min
             header:
               show: true
               title: Power · 24 h
               show_states: true
               colorize_states: true
             yaxis:
-              # forceNiceScale: round ticks (1000, 2000, ...) instead of an
-              # even split of the data range (3424, 2324, ...).
-              - decimals: 0
+              # Soft bounds -3000..4000 with 7 intervals = round 1000 W
+              # ticks. Data outside the bounds widens the axis (ticks are
+              # then uneven for that day); nothing is clipped.
+              - min: "~-3000"
+                max: "~4000"
+                decimals: 0
                 apex_config:
-                  forceNiceScale: true
+                  tickAmount: 7
             all_series_config:
               stroke_width: 2
               curve: smooth
@@ -533,6 +422,7 @@ views:
         cards:
           - type: custom:apexcharts-card
             graph_span: 24h
+            update_interval: 5min
             header:
               show: true
               title: Battery SOC · 24 h
@@ -659,9 +549,14 @@ views:
               </ha-alert>
             grid_options:
               columns: full
-          # Three bars, same rule as the Home bar. Draft and snapshot use
-          # the inverter's grid-charge flags (the drafts only change SOC).
-          # Draft cells that differ from the inverter get a dashed outline.
+          # Three bars. One cell per slot in time order, plus a leading
+          # cell for slot 6 when slot 1 starts after 00:00; content and
+          # style must compute the cells the same way. SOC labels only on
+          # slots of 3 h or longer; start times under every cell ("HH:MM",
+          # or "HH" when the cell is under 6% of the day). Draft and
+          # snapshot use the inverter's grid-charge flags (the drafts only
+          # change SOC). Draft cells that differ from the inverter get a
+          # dashed outline. The now line (first bar) carries the time.
           - type: markdown
             content: |-
               {%- set rows = [
@@ -695,10 +590,14 @@ views:
                     {%- endif -%}
                     </td>
                   {%- endfor -%}
+              </tr><tr>
+                  {%- for s in ns.segs if s[2] > s[1] -%}
+                    {%- set w = (s[2] - s[1]) / 14.4 -%}
+                    <td width="{{ w | round(2) }}%">{{ '%02d:%02d' | format(s[1] // 60, s[1] % 60) if w >= 6 else '%02d' | format(s[1] // 60) }}</td>
+                  {%- endfor -%}
               </tr></table>{{ '\n\n' }}
                 {%- endif -%}
               {%- endfor -%}
-              <table width="100%"><tr><td width="25%">00</td><td width="25%">06</td><td width="25%">12</td><td width="25%">18</td></tr></table>
             card_mod:
               style:
                 ha-markdown$: |
@@ -709,9 +608,10 @@ views:
                   ] -%}
                   table { display: table !important; width: 100%; table-layout: fixed; border-collapse: separate !important; border-spacing: 2px 0; border: 0 !important; margin: 0; position: relative; }
                   td { border: 0 !important; }
-                  table:not(:last-of-type) td { height: 40px; padding: 3px 6px !important; vertical-align: top; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; border-radius: 6px; background-color: rgba(127, 127, 127, 0.12); --mdc-icon-size: 14px; }
-                  table:last-of-type td { padding: 3px 0 0 !important; font-size: 11px; color: var(--secondary-text-color); }
+                  tr:first-child td { height: 40px; padding: 3px 6px !important; vertical-align: top; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; border-radius: 6px; background-color: rgba(127, 127, 127, 0.12); --mdc-icon-size: 14px; }
+                  tr:last-child td { height: auto; padding: 2px 0 0 2px !important; font-size: 10px; font-weight: 400; white-space: nowrap; overflow: visible; color: var(--secondary-text-color); }
                   p { margin: 10px 0 4px; font-size: 12px; color: var(--secondary-text-color); }
+                  p:first-of-type { margin-bottom: 18px; }
                   {%- for r in rows %}
                   {%- set ri = loop.index %}
                   {%- set ns = namespace(m=[], segs=[]) %}
@@ -731,10 +631,12 @@ views:
                   {%- set soc = states(r[1] ~ s[0] ~ r[2]) | int(0) %}
                   {%- set h = (soc * 0.6) | round(1) %}
                   {%- set c = '#3b82f6' if is_state('binary_sensor.elfin_deye_tou_grid_charge_slot_' ~ s[0], 'on') else '#0d9488' %}
-                  table:nth-of-type({{ ri }}) td:nth-child({{ loop.index }}) { background-image: linear-gradient(to top, {{ c }} {{ h }}%, transparent {{ h }}%);{% if ri == 2 and soc != states('sensor.elfin_deye_tou_soc_slot_' ~ s[0]) | int(0) %} outline: 2px dashed var(--primary-text-color); outline-offset: -2px;{% endif %} }
+                  table:nth-of-type({{ ri }}) tr:first-child td:nth-child({{ loop.index }}) { background-image: linear-gradient(to top, {{ c }} {{ h }}%, transparent {{ h }}%);{% if ri == 2 and soc != states('sensor.elfin_deye_tou_soc_slot_' ~ s[0]) | int(0) %} outline: 2px dashed var(--primary-text-color); outline-offset: -2px;{% endif %} }
                   {%- endfor %}
                   {%- endfor %}
-                  table:first-of-type::after { content: ""; position: absolute; top: -3px; bottom: -3px; width: 2px; left: {{ ((now().hour * 60 + now().minute) / 14.4) | round(2) }}%; background: var(--primary-text-color); }
+                  {%- set x = ((now().hour * 60 + now().minute) / 14.4) | round(2) %}
+                  table:first-of-type::after { content: ""; position: absolute; top: -3px; height: 46px; width: 2px; left: {{ x }}%; background: var(--primary-text-color); }
+                  table:first-of-type::before { content: "{{ now().strftime('%H:%M') }}"; position: absolute; top: -17px; left: {{ x }}%; transform: translateX({{ '0' if x < 6 else '-100%' if x > 94 else '-50%' }}); font-size: 10px; font-weight: 600; color: var(--primary-text-color); white-space: nowrap; }
                   {%- if is_state('input_boolean.elfin_deye_tou_emergency', 'on') %}
                   table:first-of-type { outline: 2px solid #ef4444; outline-offset: 3px; border-radius: 8px; }
                   {%- endif %}
@@ -1071,12 +973,15 @@ views:
               columns: 4
           - type: custom:apexcharts-card
             graph_span: 7d
+            update_interval: 10min
             header:
               show: false
             yaxis:
-              - decimals: 0
+              - min: "~-10"
+                max: "~10"
+                decimals: 0
                 apex_config:
-                  forceNiceScale: true
+                  tickAmount: 2
             series:
               - entity: sensor.elfin_deye_clock_offset
                 name: Offset

@@ -151,17 +151,12 @@ check("target SOC = SOC of active slot", Env({**tou_states(std), "sensor.elfin_d
 check("target SOC unavailable without active slot",
       Env({**tou_states(std), "sensor.elfin_deye_tou_active_slot": "unavailable"}, d).r(tgt_s["availability"]), "False")
 
-# ---- 1c. HACS dashboard TOU bars: content cells match card-mod rules ----
+# ---- 1c. HACS dashboard: TOU view bars, Home now/next card ----
 hacs = load("dashboards/deye_hacs.yaml")
-
-
-def bar_cards(view):
-    return [c for s in view["sections"] for c in s["cards"]
-            if c.get("type") == "markdown" and "<table" in c.get("content", "")]
-
-
-home_bar, = bar_cards(hacs["views"][0])
-tou_bars, = bar_cards(hacs["views"][1])
+tou_bars, = [c for s in hacs["views"][1]["sections"] for c in s["cards"]
+             if c.get("type") == "markdown" and "<table" in c.get("content", "")]
+now_next, = [c for s in hacs["views"][0]["sections"] for c in s["cards"]
+             if c.get("entity") == "sensor.elfin_deye_tou_active_slot"]
 
 
 def hacs_states(times, socs, drafts=None):
@@ -174,30 +169,51 @@ def hacs_states(times, socs, drafts=None):
     return st
 
 
-def first_row(html):
-    return html.split("</tr>")[0].count("<td ")
+def rows_of(html, table=0):
+    """Cell texts of both rows of one bar table."""
+    t = html.split("<table")[table + 1].split("</table>")[0]
+    bar, times = t.split("</tr>")[:2]
+    cell = lambda r: [c.split(">", 1)[1].split("</td")[0] for c in r.split("<td ")[1:]]
+    return cell(bar), cell(times)
 
 
 socs = [100, 70, 40, 30, 30, 100]
 night = ["00:00", "05:00", "07:00", "17:00", "21:00", "23:00"]
-e = Env(hacs_states(night, socs), d.replace(hour=23, minute=40))
-html, css = e.r(home_bar["content"]), e.r(home_bar["card_mod"]["style"]["ha-markdown$"])
-check("hacs bar: 6 cells", first_row(html), 6)
-check("hacs bar: one css rule per cell", css.count("td:nth-child("), 6)
-check("hacs bar: labels only on slots >= 3 h", html.count("%</td>"), 3)
-check("hacs bar: now marker at 23:40", "left: 98.61%" in css, True)
-e = Env(hacs_states(late, socs), d.replace(hour=0, minute=30))
-html, css = e.r(home_bar["content"]), e.r(home_bar["card_mod"]["style"]["ha-markdown$"])
-check("hacs bar: slot 1 at 01:00 adds a leading slot-6 cell", (first_row(html), css.count("td:nth-child(")), (7, 7))
-check("hacs bar: no times -> message, no rules",
-      (Env({}, d).r(home_bar["content"]), Env({}, d).r(home_bar["card_mod"]["style"]["ha-markdown$"]).count("nth-child")),
-      ("TOU start times are not available yet.", 0))
-e = Env(hacs_states(night, socs, [100, 70, 50, 30, 30, 100]), d)
+e = Env(hacs_states(night, socs, [100, 70, 50, 30, 30, 100]), d.replace(hour=23, minute=40))
 html, css = e.r(tou_bars["content"]), e.r(tou_bars["card_mod"]["style"]["ha-markdown$"])
-check("hacs TOU view: three bars + axis", html.count("<table"), 4)
-check("hacs TOU view: one css rule per cell", css.count("td:nth-child("), 18)
-check("hacs TOU view: only draft slot 3 outlined",
-      [ln.split(" {")[0] for ln in css.splitlines() if "dashed" in ln], ["table:nth-of-type(2) td:nth-child(3)"])
+bar, times = rows_of(html)
+check("hacs TOU: three bars, no hour axis", html.count("<table"), 3)
+check("hacs TOU: start times under cells (HH when narrow)", times, ["00:00", "05:00", "07:00", "17:00", "21:00", "23"])
+check("hacs TOU: SOC labels only on slots >= 3 h", sum(1 for c in bar if c.endswith("%")), 3)
+check("hacs TOU: one css rule per bar cell", css.count("tr:first-child td:nth-child("), 18)
+check("hacs TOU: now line at 23:40", "left: 98.61%" in css, True)
+check("hacs TOU: now label text, kept inside on the right", ('content: "23:40"' in css, "translateX(-100%)" in css), (True, True))
+check("hacs TOU: only draft slot 3 outlined",
+      [ln.split(" {")[0] for ln in css.splitlines() if "dashed" in ln], ["table:nth-of-type(2) tr:first-child td:nth-child(3)"])
+e = Env(hacs_states(late, socs), d.replace(hour=0, minute=30))
+html, css = e.r(tou_bars["content"]), e.r(tou_bars["card_mod"]["style"]["ha-markdown$"])
+check("hacs TOU: slot 1 at 01:00 adds a leading slot-6 cell", (rows_of(html)[1][:2], css.count("tr:first-child td:nth-child(")), (["00", "01:00"], 21))
+check("hacs TOU: no times -> message, no rules",
+      (Env({}, d).r(tou_bars["content"]).count("(start times not available)"),
+       Env({}, d).r(tou_bars["card_mod"]["style"]["ha-markdown$"]).count("nth-child")), (3, 0))
+
+
+def nn(active, soc_list=socs, gc_slots=(1, 6)):
+    st = hacs_states(night, soc_list)
+    for i in range(1, 7):
+        st[f"binary_sensor.elfin_deye_tou_grid_charge_slot_{i}"] = "on" if i in gc_slots else "off"
+    st["sensor.elfin_deye_tou_active_slot"] = active
+    e = Env(st, d)
+    return (e.r(now_next["primary"], entity="sensor.elfin_deye_tou_active_slot"),
+            e.r(now_next["secondary"], entity="sensor.elfin_deye_tou_active_slot"))
+
+
+check("now/next: slot 6 (wraps), skips same-setting slot 1",
+      nn("6"), ("Slot 6 · 23:00–00:00 · target 100%, grid charge", "Next: 05:00 → 70% · 07:00 → 40%"))
+check("now/next: slot 4, skips 21:00 (same 30%)",
+      nn("4"), ("Slot 4 · 17:00–21:00 · target 30%", "Next: 23:00 → 100% (grid charge) · 05:00 → 70%"))
+check("now/next: no changes", nn("2", [50] * 6, ()), ("Slot 2 · 05:00–07:00 · target 50%", "No changes in the next 24 h"))
+check("now/next: unavailable", nn("unavailable"), ("TOU schedule not available", ""))
 
 # ---- 1d. HACS dashboard texts: draft status, clock, last sync ----
 hacs_cards = [c for v in hacs["views"] for s in v["sections"] for c in s["cards"]]

@@ -55,7 +55,9 @@ day's cost summed across the reset (the cost total continued after
 
 ## TOU helpers renamed `deye_elfin_tou_*` -> `elfin_deye_tou_*`
 
-**Status: not yet deployed.**
+**Status: [verified] deployed on the author's install, 2026-10-11.** The
+first Capture restored the snapshot from the inverter; the old entities
+were deleted.
 
 All TOU control entities moved to the project-wide `elfin_deye_` prefix,
 including their `unique_id`s. They have no long-term statistics worth
@@ -72,7 +74,8 @@ keeping, so they are created fresh:
 
 ## Deploy checklist
 
-**Status: in progress on the author's install, 2026-10-08.**
+**Status: [verified] done on the author's install, 2026-10-11 (restart
+about 12:33). All checks in steps 9-14 passed; results below.**
 
 Order matters: a Modbus hub defined twice is not an error. The second
 one passes the configuration check and is silently not loaded, with all
@@ -154,6 +157,19 @@ After the restart (stop and roll back on any failure in 9-11):
     dashboard's TOU view (it uses the old ids).
 14. Check: a test call of `script.elfin_deye_notify_all` reaches every
     target; the grid-charge state matches the inverter LCD.
+
+Result, 2026-10-11:
+
+- Repairs empty; no Modbus warnings or errors in the log.
+- Every entity in step 10 live. Clock offset 42 s right after the
+  restart: normal drift, below the 60 s sync threshold.
+- Energy dashboard: today's graph continuous across the restart.
+- Capture: the snapshot SOC profile matched the values noted in step 2,
+  and its notification reached every target.
+- No orphaned `deye_elfin_tou_*` entities left in the registry.
+
+Left for later: remove the old dashboard, and delete the moved-out old
+files after a week without problems (rollback needs them until then).
 
 Rollback: move the new files out of `packages/`, move the old ones
 back, restart. The old TOU helpers restore their previous values.

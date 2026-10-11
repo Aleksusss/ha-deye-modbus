@@ -276,6 +276,8 @@ check("hacs TOU: slider primary = slot time range",
 check("hacs TOU: sliders horizontal, live native value as secondary",
       {(c.get("layout"), c.get("icon_type"), c.get("primary_info"), c.get("secondary_info")) for c in sliders},
       {("horizontal", "none", "name", "state")})
+check("hacs TOU: slider text block sized to content",
+      {"flex: 0 0 auto" in c["card_mod"]["style"]["."] for c in sliders}, {True})
 
 # ---- 1e. HACS dashboard structure ----
 diag_secs = hacs["views"][2]["sections"]

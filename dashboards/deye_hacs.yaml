@@ -686,6 +686,10 @@ views:
                     content: "{{ states('sensor.elfin_deye_tou_start_time_slot_1') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_2') }}";
                     font-size: var(--card-primary-font-size, 14px);
                   }
+                # Text block as wide as its content (Mushroom's horizontal
+                # layout gives it half the card); the slider takes the rest.
+                .: |
+                  mushroom-state-item { flex: 0 0 auto; min-width: 0; margin-right: 12px; }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
@@ -705,6 +709,10 @@ views:
                     content: "{{ states('sensor.elfin_deye_tou_start_time_slot_2') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_3') }}";
                     font-size: var(--card-primary-font-size, 14px);
                   }
+                # Text block as wide as its content (Mushroom's horizontal
+                # layout gives it half the card); the slider takes the rest.
+                .: |
+                  mushroom-state-item { flex: 0 0 auto; min-width: 0; margin-right: 12px; }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
@@ -724,6 +732,10 @@ views:
                     content: "{{ states('sensor.elfin_deye_tou_start_time_slot_3') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_4') }}";
                     font-size: var(--card-primary-font-size, 14px);
                   }
+                # Text block as wide as its content (Mushroom's horizontal
+                # layout gives it half the card); the slider takes the rest.
+                .: |
+                  mushroom-state-item { flex: 0 0 auto; min-width: 0; margin-right: 12px; }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
@@ -743,6 +755,10 @@ views:
                     content: "{{ states('sensor.elfin_deye_tou_start_time_slot_4') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_5') }}";
                     font-size: var(--card-primary-font-size, 14px);
                   }
+                # Text block as wide as its content (Mushroom's horizontal
+                # layout gives it half the card); the slider takes the rest.
+                .: |
+                  mushroom-state-item { flex: 0 0 auto; min-width: 0; margin-right: 12px; }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
@@ -762,6 +778,10 @@ views:
                     content: "{{ states('sensor.elfin_deye_tou_start_time_slot_5') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_6') }}";
                     font-size: var(--card-primary-font-size, 14px);
                   }
+                # Text block as wide as its content (Mushroom's horizontal
+                # layout gives it half the card); the slider takes the rest.
+                .: |
+                  mushroom-state-item { flex: 0 0 auto; min-width: 0; margin-right: 12px; }
             grid_options:
               columns: full
           - type: custom:mushroom-number-card
@@ -781,6 +801,10 @@ views:
                     content: "{{ states('sensor.elfin_deye_tou_start_time_slot_6') }}–{{ states('sensor.elfin_deye_tou_start_time_slot_1') }}";
                     font-size: var(--card-primary-font-size, 14px);
                   }
+                # Text block as wide as its content (Mushroom's horizontal
+                # layout gives it half the card); the slider takes the rest.
+                .: |
+                  mushroom-state-item { flex: 0 0 auto; min-width: 0; margin-right: 12px; }
             grid_options:
               columns: full
           - type: custom:mushroom-template-card

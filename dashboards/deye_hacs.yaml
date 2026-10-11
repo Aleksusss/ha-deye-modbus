@@ -367,16 +367,15 @@ views:
       - type: grid
         column_span: 2
         cards:
-          # Redraw every 5 min (the statistics are 5-minute means); the
-          # header values refresh at the same rate, the flow card is live.
+          # Redraw every 5 min (the statistics are 5-minute means). No
+          # values in the header: live values are in the chips and the
+          # flow card; the legend names the series.
           - type: custom:apexcharts-card
             graph_span: 24h
             update_interval: 5min
             header:
               show: true
               title: Power · 24 h
-              show_states: true
-              colorize_states: true
             yaxis:
               # Soft bounds -3000..4000 with 7 intervals = round 1000 W
               # ticks. Data outside the bounds widens the axis (ticks are
@@ -392,8 +391,6 @@ views:
               statistics:
                 type: mean
                 period: 5minute
-              show:
-                in_header: raw
             series:
               - entity: sensor.elfin_deye_load_power
                 name: Load
@@ -410,7 +407,9 @@ views:
               chart:
                 height: 240
               legend:
-                show: false
+                show: true
+                position: top
+                horizontalAlign: left
               grid:
                 borderColor: rgba(127, 127, 127, 0.15)
             grid_options:
@@ -426,8 +425,6 @@ views:
             header:
               show: true
               title: Battery SOC · 24 h
-              show_states: true
-              colorize_states: true
             yaxis:
               - min: 0
                 max: 100
@@ -445,8 +442,6 @@ views:
                 statistics:
                   type: mean
                   period: 5minute
-                show:
-                  in_header: raw
               # History starts when the sensor is installed.
               - entity: sensor.elfin_deye_tou_target_soc
                 name: TOU target
@@ -454,13 +449,13 @@ views:
                 stroke_width: 2
                 stroke_dash: 4
                 curve: stepline
-                show:
-                  in_header: raw
             apex_config:
               chart:
                 height: 210
               legend:
-                show: false
+                show: true
+                position: top
+                horizontalAlign: left
               grid:
                 borderColor: rgba(127, 127, 127, 0.15)
             grid_options:
@@ -606,12 +601,18 @@ views:
                     ['sensor.elfin_deye_tou_start_time_slot_', 'input_number.elfin_deye_tou_soc_', '_draft'],
                     ['input_text.elfin_deye_tou_snapshot_time_', 'input_number.elfin_deye_tou_snapshot_soc_', ''],
                   ] -%}
-                  table { display: table !important; width: 100%; table-layout: fixed; border-collapse: separate !important; border-spacing: 2px 0; border: 0 !important; margin: 0; position: relative; }
+                  {#- No pseudo-elements on the tables: a ::before on a table
+                      became an anonymous first row in Safari, and with
+                      table-layout: fixed that row set equal column widths.
+                      The now line and its time hang off the "Inverter"
+                      paragraph instead (same width as the tables). #}
+                  table { display: table !important; width: 100%; table-layout: fixed; border-collapse: separate !important; border-spacing: 2px 0; border: 0 !important; margin: 0; }
                   td { border: 0 !important; }
                   tr:first-child td { height: 40px; padding: 3px 6px !important; vertical-align: top; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; border-radius: 6px; background-color: rgba(127, 127, 127, 0.12); --mdc-icon-size: 14px; }
                   tr:last-child td { height: auto; padding: 2px 0 0 2px !important; font-size: 10px; font-weight: 400; white-space: nowrap; overflow: visible; color: var(--secondary-text-color); }
                   p { margin: 10px 0 4px; font-size: 12px; color: var(--secondary-text-color); }
-                  p:first-of-type { margin-bottom: 18px; }
+                  p:first-of-type { margin-bottom: 18px; position: relative; }
+                  {%- set first = namespace(ok=false) %}
                   {%- for r in rows %}
                   {%- set ri = loop.index %}
                   {%- set ns = namespace(m=[], segs=[]) %}
@@ -622,6 +623,7 @@ views:
                     {%- endif %}
                   {%- endfor %}
                   {%- if ns.m | length == 6 %}
+                    {%- if ri == 1 %}{%- set first.ok = true %}{%- endif %}
                     {%- if ns.m[0] > 0 %}{%- set ns.segs = [[6, 0, ns.m[0]]] %}{%- endif %}
                     {%- for i in range(6) %}
                       {%- set ns.segs = ns.segs + [[i + 1, ns.m[i], ns.m[i + 1] if i < 5 else 1440]] %}
@@ -634,9 +636,11 @@ views:
                   table:nth-of-type({{ ri }}) tr:first-child td:nth-child({{ loop.index }}) { background-image: linear-gradient(to top, {{ c }} {{ h }}%, transparent {{ h }}%);{% if ri == 2 and soc != states('sensor.elfin_deye_tou_soc_slot_' ~ s[0]) | int(0) %} outline: 2px dashed var(--primary-text-color); outline-offset: -2px;{% endif %} }
                   {%- endfor %}
                   {%- endfor %}
+                  {%- if first.ok %}
                   {%- set x = ((now().hour * 60 + now().minute) / 14.4) | round(2) %}
-                  table:first-of-type::after { content: ""; position: absolute; top: -3px; height: 46px; width: 2px; left: {{ x }}%; background: var(--primary-text-color); }
-                  table:first-of-type::before { content: "{{ now().strftime('%H:%M') }}"; position: absolute; top: -17px; left: {{ x }}%; transform: translateX({{ '0' if x < 6 else '-100%' if x > 94 else '-50%' }}); font-size: 10px; font-weight: 600; color: var(--primary-text-color); white-space: nowrap; }
+                  p:first-of-type::before { content: ""; position: absolute; top: calc(100% + 15px); height: 48px; width: 2px; left: {{ x }}%; background: var(--primary-text-color); }
+                  p:first-of-type::after { content: "{{ now().strftime('%H:%M') }}"; position: absolute; top: calc(100% + 1px); left: {{ x }}%; transform: translateX({{ '0' if x < 6 else '-100%' if x > 94 else '-50%' }}); font-size: 10px; font-weight: 600; color: var(--primary-text-color); white-space: nowrap; }
+                  {%- endif %}
                   {%- if is_state('input_boolean.elfin_deye_tou_emergency', 'on') %}
                   table:first-of-type { outline: 2px solid #ef4444; outline-offset: 3px; border-radius: 8px; }
                   {%- endif %}

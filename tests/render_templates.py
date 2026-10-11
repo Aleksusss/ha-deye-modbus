@@ -13,6 +13,7 @@ Prints one line per check; exits 1 if any check fails.
 """
 import datetime as dt
 import os
+import re
 import sys
 import types
 
@@ -186,16 +187,32 @@ check("hacs TOU: three bars, no hour axis", html.count("<table"), 3)
 check("hacs TOU: start times under cells (HH when narrow)", times, ["00:00", "05:00", "07:00", "17:00", "21:00", "23"])
 check("hacs TOU: SOC labels only on slots >= 3 h", sum(1 for c in bar if c.endswith("%")), 3)
 check("hacs TOU: one css rule per bar cell", css.count("tr:first-child td:nth-child("), 18)
-check("hacs TOU: now line at 23:40", "left: 98.61%" in css, True)
+check("hacs TOU: now line at 23:40, on the Inverter paragraph",
+      [ln.split(" {")[0] for ln in css.splitlines() if "left: 98.61%" in ln], ["p:first-of-type::before", "p:first-of-type::after"])
 check("hacs TOU: now label text, kept inside on the right", ('content: "23:40"' in css, "translateX(-100%)" in css), (True, True))
+# Regression (2026-10-11): a ::before on the first table became an anonymous
+# first row in Safari and, with table-layout: fixed, gave it equal columns.
+check("hacs TOU: no pseudo-elements on tables",
+      [ln.split(" {")[0] for ln in css.splitlines() if "table" in ln.split(" {")[0] and "::" in ln.split(" {")[0]], [])
+
+
+def bar_widths(html):
+    """td widths of the bar row of each table."""
+    return [re.findall(r'<td width="([0-9.]+%)"', t.split("<tr>")[1].split("</tr>")[0])
+            for t in html.split("<table")[1:]]
+
+
+slot_widths = ["20.83%", "8.33%", "41.67%", "16.67%", "8.33%", "4.17%"]
+check("hacs TOU: all three bars use the same cell widths", bar_widths(html), [slot_widths] * 3)
 check("hacs TOU: only draft slot 3 outlined",
       [ln.split(" {")[0] for ln in css.splitlines() if "dashed" in ln], ["table:nth-of-type(2) tr:first-child td:nth-child(3)"])
 e = Env(hacs_states(late, socs), d.replace(hour=0, minute=30))
 html, css = e.r(tou_bars["content"]), e.r(tou_bars["card_mod"]["style"]["ha-markdown$"])
 check("hacs TOU: slot 1 at 01:00 adds a leading slot-6 cell", (rows_of(html)[1][:2], css.count("tr:first-child td:nth-child(")), (["00", "01:00"], 21))
-check("hacs TOU: no times -> message, no rules",
+check("hacs TOU: no times -> message, no rules, no now line",
       (Env({}, d).r(tou_bars["content"]).count("(start times not available)"),
-       Env({}, d).r(tou_bars["card_mod"]["style"]["ha-markdown$"]).count("nth-child")), (3, 0))
+       Env({}, d).r(tou_bars["card_mod"]["style"]["ha-markdown$"]).count("nth-child"),
+       "::before" in Env({}, d).r(tou_bars["card_mod"]["style"]["ha-markdown$"])), (3, 0, False))
 
 
 def nn(active, soc_list=socs, gc_slots=(1, 6)):

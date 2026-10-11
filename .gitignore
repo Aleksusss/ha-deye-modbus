@@ -22,3 +22,6 @@ secrets.yaml
 .DS_Store
 *.swp
 *~
+
+# Local virtualenv for tests/
+.venv/

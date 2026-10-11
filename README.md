@@ -173,6 +173,9 @@ Optional (`packages/optional/`):
 
 Example dashboard: `dashboards/deye.yaml` (built-in cards only).
 
+Template logic tests: `tests/render_templates.py`; how to run them is
+in [docs/testing.md](docs/testing.md#template-checks).
+
 The project writes to the inverter in exactly two places: the clock
 (22-24) and the six TOU SOC targets (268-273). Nothing else is ever
 written. See [docs/registers.md](docs/registers.md).
@@ -224,6 +227,10 @@ results: [docs/testing.md](docs/testing.md).
 - A real grid outage (2026-10-07, about 18 minutes): "lost" and
   "restored" fired in the same minutes as the stock logger's alerts;
   duration 18 min here vs 18 min 30 s from the logger.
+- A very short grid dip (2026-10-08): register 194 read 0 for about
+  65-70 s, roughly the reconnect hold alone; "lost" and "restored" fired,
+  as did the stock logger's alerts. The lights did not flicker. The
+  dip's own length is unknown.
 - Inverter losses daily value (2026-10-07): 1.6 kWh, about 11% of grid
   import, consistent with the measured charge conversion loss and a
   cross-check against the battery SOC balance.
@@ -242,8 +249,9 @@ results: [docs/testing.md](docs/testing.md).
 
 ## Not verified
 
-- Register 194 on a real sub-second grid dip. (The author still runs the
-  stock logger alongside as a backup until this is confirmed.)
+- Register 194 on a dip of known sub-second length: the 2026-10-08 dip
+  was caught, but how long it lasted was not measured. (The author still
+  runs the stock logger alongside as a backup until this is confirmed.)
 - Grid power sign during export (the test install never exports).
 - Grid-charge flag values other than 4 and 5.
 - Outage duration across a Home Assistant restart (fix checked offline

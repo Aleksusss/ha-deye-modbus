@@ -107,6 +107,10 @@ Before (no changes to the running system):
    ```
    Any MISSING: use the real id from "Candidates" in the dashboard and in
    step 9. Do not rename the entity: Energy and statistics use its id.
+   Result on the author's install, 2026-10-11: all present. Similar ids
+   without the `elfin_` prefix (`sensor.deye_grid_outage_count_*`) come
+   from another package that stays; they have different names and no
+   `unique_id`, so they do not collide.
 4. **Create the new dashboard now**, before the restart: paste
    `dashboards/deye.yaml` into a new dashboard's raw configuration
    editor. Its cards show "not available" until step 8, then the

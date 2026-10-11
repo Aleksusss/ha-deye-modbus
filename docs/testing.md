@@ -44,7 +44,17 @@ the logger. This time register 150 did drop (it read 5 V during the
 outage); it has held its last value in other outages, so it is still
 not used for detection.
 
-Not verified: a real sub-second grid dip. The stock logger stays
+Very short dip, 2026-10-08, with Home Assistant running well past its
+startup grace: `grid connected` read 0 for about 65-70 s with no gaps
+in the history, and the AC voltage read about 5 V, in Home Assistant
+and in the stock logger alike. "Grid lost" and "grid restored" fired,
+and so did the logger's alerts. The lights did not flicker. 65-70 s is
+about the reconnect hold alone, so the dip itself was short, but its
+length is unknown: register 194 shows that a dip happened, not how long
+it lasted. The alert timestamps (17:16) and the history (17:18-17:19)
+differ by about 2 minutes; the cause was not checked.
+
+Not verified: a dip of known sub-second length. The stock logger stays
 connected as a backup until it is.
 
 Restart during an outage, 2026-10-08: an outage from 11:41 to 15:06
@@ -211,15 +221,26 @@ inverters are least efficient) plus the inverter's own standby draw.
 
 ## Template checks
 
-Template logic (active TOU slot, grid-charge bit decoding, losses
-formula, clock register encoding) can be rendered in Developer tools ->
-Template with the real sensors. During development the same templates
-were also rendered with plain Jinja and mocked states; that does not
-replace a check in Home Assistant, whose filters differ in details.
+`tests/render_templates.py` loads the templates straight from the
+packages and the dashboard and renders them with plain Jinja and mocked
+states: active TOU slot, grid-charge bit decoding, losses formula, clock
+register encoding and read-back check, outage duration across restarts.
+From the repository root:
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r tests/requirements.txt
+.venv/bin/python tests/render_templates.py   # exit code 1 on any FAIL
+```
+
+This checks the logic only. Home Assistant's template engine differs in
+details (filters, native types), so render a template in Developer
+tools -> Template with the real sensors before relying on it.
 
 ## Not verified yet
 
-- Register 194 on a real sub-second grid dip.
+- Register 194 on a dip of known sub-second length (a very short dip
+  was caught on 2026-10-08; its length is unknown).
 - Grid power sign during export.
 - Grid-charge flag values other than 4 and 5.
 - Outage duration across a Home Assistant restart (fix of 2026-10-11).

@@ -522,7 +522,7 @@ views:
                 icon: mdi:clock-check-outline
           - type: button
             name: Sync clock now
-            icon: mdi:clock-sync-outline
+            icon: mdi:timer-sync-outline
             show_state: false
             tap_action:
               action: perform-action

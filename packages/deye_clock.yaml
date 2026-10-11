@@ -180,7 +180,7 @@ script:
     description: >
       Set the inverter clock from Home Assistant's local time.
       Writes only registers 22, 23 and 24 through the deye_elfin hub.
-    icon: mdi:clock-sync-outline
+    icon: mdi:timer-sync-outline
     mode: single
     sequence:
       # ONE now() for all three registers. Calling now() once per

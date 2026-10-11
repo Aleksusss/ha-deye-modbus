@@ -199,6 +199,31 @@ check("hacs TOU view: one css rule per cell", css.count("td:nth-child("), 18)
 check("hacs TOU view: only draft slot 3 outlined",
       [ln.split(" {")[0] for ln in css.splitlines() if "dashed" in ln], ["table:nth-of-type(2) td:nth-child(3)"])
 
+# ---- 1d. HACS dashboard texts: draft status, clock, last sync ----
+hacs_cards = [c for v in hacs["views"] for s in v["sections"] for c in s["cards"]]
+apply_sec, = [c["secondary"] for c in hacs_cards if c.get("primary") == "Apply to inverter"]
+clock_pri, = [c["primary"] for c in hacs_cards if c.get("entity") == "sensor.elfin_deye_clock_display"]
+sync_pri, = [c["primary"] for c in hacs_cards
+             if c.get("entity") == "script.elfin_deye_sync_clock_once" and c.get("secondary") == "Last sync"]
+
+
+def apply_text(drafts, status):
+    st = {**hacs_states(night, socs, drafts), "sensor.elfin_deye_tou_soc_draft_status": status}
+    return Env(st, d).r(apply_sec)
+
+
+check("apply: draft = inverter", apply_text(socs, "matches_actual"), "Draft = inverter")
+check("apply: one slot differs", apply_text([100, 70, 50, 30, 30, 100], "draft_differs"), "Draft differs in slot 3")
+check("apply: two slots differ", apply_text([100, 70, 50, 30, 40, 100], "draft_differs"), "Draft differs in slots 3, 5")
+check("apply: status unavailable", apply_text(socs, "unavailable"), "Draft status unavailable")
+check("clock: time only", Env({"sensor.elfin_deye_clock_display": "2026-10-11 18:42:07"}, d).r(clock_pri, entity="sensor.elfin_deye_clock_display"), "18:42:07")
+now_ = dt.datetime(2026, 10, 11, 18, 0)
+for ago, want in ((dt.timedelta(days=5, hours=3), "5d ago"), (dt.timedelta(hours=3, minutes=10), "3h ago"),
+                  (dt.timedelta(minutes=12), "12m ago")):
+    e = Env({}, now_, {("script.elfin_deye_sync_clock_once", "last_triggered"): now_ - ago})
+    check(f"last sync {want}", e.r(sync_pri, entity="script.elfin_deye_sync_clock_once"), want)
+check("last sync never", Env({}, now_).r(sync_pri, entity="script.elfin_deye_sync_clock_once"), "never")
+
 # ---- 2. losses: empty pv/export == old formula ----
 loss = load("packages/optional/deye_inverter_losses.yaml")["template"][0]["sensor"][0]
 st = {"sensor.elfin_deye_grid_import_total": "3473.6", "sensor.elfin_deye_battery_charge_total": "1987.8",

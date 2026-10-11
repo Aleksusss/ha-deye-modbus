@@ -101,6 +101,8 @@ views:
                   {{ '%+d' | format(o) }} s · {{ 'sync needed' if is_state('binary_sensor.elfin_deye_clock_needs_sync', 'on') else 'clock' }}
                 tap_action:
                   action: more-info
+            grid_options:
+              columns: full
           - type: markdown
             visibility:
               - condition: state
@@ -490,9 +492,11 @@ views:
               show_states: true
               colorize_states: true
             yaxis:
+              # forceNiceScale: round ticks (1000, 2000, ...) instead of an
+              # even split of the data range (3424, 2324, ...).
               - decimals: 0
                 apex_config:
-                  tickAmount: 5
+                  forceNiceScale: true
             all_series_config:
               stroke_width: 2
               curve: smooth
@@ -744,27 +748,150 @@ views:
           - type: heading
             heading: Normal SOC profile (draft)
             icon: mdi:pencil
-          - type: entities
-            show_header_toggle: false
-            entities:
-              - entity: input_number.elfin_deye_tou_soc_1_draft
-                name: Slot 1
-              - entity: input_number.elfin_deye_tou_soc_2_draft
-                name: Slot 2
-              - entity: input_number.elfin_deye_tou_soc_3_draft
-                name: Slot 3
-              - entity: input_number.elfin_deye_tou_soc_4_draft
-                name: Slot 4
-              - entity: input_number.elfin_deye_tou_soc_5_draft
-                name: Slot 5
-              - entity: input_number.elfin_deye_tou_soc_6_draft
-                name: Slot 6
-              - entity: sensor.elfin_deye_tou_soc_draft_status
-                name: Draft status
-          - type: button
-            name: Apply to inverter
+          # Sliders for the drafts; the helpers keep their own mode. The
+          # value is drawn right of the slider by card-mod (Jinja); it
+          # updates when the slider is released.
+          - type: custom:mushroom-number-card
+            entity: input_number.elfin_deye_tou_soc_1_draft
+            name: Slot 1
+            icon_type: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: none
+            display_mode: slider
+            icon_color: "#0d9488"
+            card_mod:
+              style: |
+                .actions::after {
+                  content: "{{ states(config.entity) | int(0) }}%";
+                  align-self: center;
+                  min-width: 44px;
+                  text-align: right;
+                  font-weight: 500;
+                  color: var(--primary-text-color);
+                }
+            grid_options:
+              columns: full
+          - type: custom:mushroom-number-card
+            entity: input_number.elfin_deye_tou_soc_2_draft
+            name: Slot 2
+            icon_type: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: none
+            display_mode: slider
+            icon_color: "#0d9488"
+            card_mod:
+              style: |
+                .actions::after {
+                  content: "{{ states(config.entity) | int(0) }}%";
+                  align-self: center;
+                  min-width: 44px;
+                  text-align: right;
+                  font-weight: 500;
+                  color: var(--primary-text-color);
+                }
+            grid_options:
+              columns: full
+          - type: custom:mushroom-number-card
+            entity: input_number.elfin_deye_tou_soc_3_draft
+            name: Slot 3
+            icon_type: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: none
+            display_mode: slider
+            icon_color: "#0d9488"
+            card_mod:
+              style: |
+                .actions::after {
+                  content: "{{ states(config.entity) | int(0) }}%";
+                  align-self: center;
+                  min-width: 44px;
+                  text-align: right;
+                  font-weight: 500;
+                  color: var(--primary-text-color);
+                }
+            grid_options:
+              columns: full
+          - type: custom:mushroom-number-card
+            entity: input_number.elfin_deye_tou_soc_4_draft
+            name: Slot 4
+            icon_type: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: none
+            display_mode: slider
+            icon_color: "#0d9488"
+            card_mod:
+              style: |
+                .actions::after {
+                  content: "{{ states(config.entity) | int(0) }}%";
+                  align-self: center;
+                  min-width: 44px;
+                  text-align: right;
+                  font-weight: 500;
+                  color: var(--primary-text-color);
+                }
+            grid_options:
+              columns: full
+          - type: custom:mushroom-number-card
+            entity: input_number.elfin_deye_tou_soc_5_draft
+            name: Slot 5
+            icon_type: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: none
+            display_mode: slider
+            icon_color: "#0d9488"
+            card_mod:
+              style: |
+                .actions::after {
+                  content: "{{ states(config.entity) | int(0) }}%";
+                  align-self: center;
+                  min-width: 44px;
+                  text-align: right;
+                  font-weight: 500;
+                  color: var(--primary-text-color);
+                }
+            grid_options:
+              columns: full
+          - type: custom:mushroom-number-card
+            entity: input_number.elfin_deye_tou_soc_6_draft
+            name: Slot 6
+            icon_type: none
+            layout: horizontal
+            primary_info: name
+            secondary_info: none
+            display_mode: slider
+            icon_color: "#0d9488"
+            card_mod:
+              style: |
+                .actions::after {
+                  content: "{{ states(config.entity) | int(0) }}%";
+                  align-self: center;
+                  min-width: 44px;
+                  text-align: right;
+                  font-weight: 500;
+                  color: var(--primary-text-color);
+                }
+            grid_options:
+              columns: full
+          - type: custom:mushroom-template-card
+            primary: Apply to inverter
+            secondary: >-
+              {% set ns = namespace(d=[]) %}
+              {% for i in range(1, 7) %}
+                {% if states('input_number.elfin_deye_tou_soc_' ~ i ~ '_draft') | int(-1)
+                      != states('sensor.elfin_deye_tou_soc_slot_' ~ i) | int(-1) %}
+                  {% set ns.d = ns.d + [i | string] %}
+                {% endif %}
+              {% endfor %}
+              {% if is_state('sensor.elfin_deye_tou_soc_draft_status', 'matches_actual') %}Draft = inverter
+              {% elif is_state('sensor.elfin_deye_tou_soc_draft_status', 'draft_differs') %}Draft differs in slot{{ 's' if ns.d | count > 1 }} {{ ns.d | join(', ') }}
+              {% else %}Draft status unavailable{% endif %}
             icon: mdi:content-save-cog
-            show_state: false
+            color: "#0d9488"
             visibility:
               - condition: state
                 entity: input_boolean.elfin_deye_tou_emergency
@@ -825,10 +952,11 @@ views:
               action: more-info
             grid_options:
               columns: 4
-          - type: button
-            name: Capture from inverter
+          - type: custom:mushroom-template-card
+            primary: Capture from inverter
+            secondary: Replace the snapshot and the drafts
             icon: mdi:content-save-outline
-            show_state: false
+            color: "#8b8f96"
             visibility:
               - condition: state
                 entity: input_boolean.elfin_deye_tou_emergency
@@ -904,7 +1032,8 @@ views:
             icon: mdi:clock-check-outline
           - type: custom:mushroom-template-card
             entity: sensor.elfin_deye_clock_display
-            primary: "{{ states(entity) }}"
+            # "YYYY-MM-DD HH:MM:SS" -> time only; the date is in more-info.
+            primary: "{{ states(entity)[11:] if states(entity) | length == 19 else states(entity) }}"
             secondary: Clock
             icon: mdi:clock-outline
             color: disabled
@@ -926,9 +1055,13 @@ views:
               columns: 4
           - type: custom:mushroom-template-card
             entity: script.elfin_deye_sync_clock_once
+            # Compact age ("5d ago", "3h ago", "12m ago") so it fits on a phone.
             primary: >-
-              {% set t = state_attr(entity, 'last_triggered') %}
-              {{ time_since(t) ~ ' ago' if t else 'never' }}
+              {%- set t = state_attr(entity, 'last_triggered') -%}
+              {%- if t -%}
+                {%- set sec = (now() - t).total_seconds() | int -%}
+                {%- if sec >= 86400 -%}{{ sec // 86400 }}d{%- elif sec >= 3600 -%}{{ sec // 3600 }}h{%- else -%}{{ sec // 60 }}m{%- endif %} ago
+              {%- else -%}never{%- endif -%}
             secondary: Last sync
             icon: mdi:clock-check-outline
             color: disabled
@@ -943,7 +1076,7 @@ views:
             yaxis:
               - decimals: 0
                 apex_config:
-                  tickAmount: 2
+                  forceNiceScale: true
             series:
               - entity: sensor.elfin_deye_clock_offset
                 name: Offset
@@ -972,10 +1105,11 @@ views:
               last sync {{ as_timestamp(s) | timestamp_custom('%Y-%m-%d %H:%M') if s else 'never' }}.
             grid_options:
               columns: full
-          - type: button
-            name: Sync clock now
-            icon: mdi:clock-sync-outline
-            show_state: false
+          - type: custom:mushroom-template-card
+            primary: Sync clock now
+            secondary: Write Home Assistant's time to the inverter
+            icon: mdi:timer-sync-outline
+            color: "#8b8f96"
             tap_action:
               action: perform-action
               perform_action: script.turn_on

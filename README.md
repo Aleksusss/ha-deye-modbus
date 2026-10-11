@@ -97,6 +97,13 @@ to 0 instantly and, when the grid returns, stays 0 for about 70 s while
 the inverter checks grid stability. A 5 s poll cannot miss an outage,
 and outage durations include that minute of reconnect time.
 
+### A restart resets `last_changed`
+
+Measuring an outage as "now minus when the sensor went off" breaks as
+soon as Home Assistant restarts mid-outage: the sensor comes back with
+a fresh `last_changed`. A 3h25m outage was once reported as 0h54m. The
+outage start is now stored in restored helpers, set once per outage.
+
 ### TOU registers: four blocks, and the power block is easy to shift
 
 | Block | HA addresses | mbpoll (1-based) |
@@ -239,6 +246,8 @@ results: [docs/testing.md](docs/testing.md).
   stock logger alongside as a backup until this is confirmed.)
 - Grid power sign during export (the test install never exports).
 - Grid-charge flag values other than 4 and 5.
+- Outage duration across a Home Assistant restart (fix checked offline
+  only).
 - PV registers (the test install has no panels).
 - Other LP1 models or firmware versions, and RS485-to-TCP gateways
   other than the EW11.

@@ -19,6 +19,19 @@
 #   3. Readings are snapshotted into automation variables at trigger
 #      time, so the value that passed the check is the value reported.
 #
+# Restarts during an outage: a restart resets last_changed of Grid
+# Available, so durations measured from it were cut short (an outage of
+# 3h25m was once reported as 0h54m). The outage start is therefore kept
+# in two restored helpers, set once when an outage begins and never
+# overwritten while it lasts:
+#   input_boolean.elfin_deye_grid_outage_active
+#   input_datetime.elfin_deye_grid_outage_started
+# If the grid returned while HA was down, the startup bootstrap closes
+# the outage after the grace period and reports it.
+# Known gaps: an outage that STARTS within the 2-minute grace gets no
+# "lost" alert (its start is still recorded, and "restored" is sent);
+# one that started while HA was down is timed from HA's start.
+#
 # Verified: a 10-15 s breaker test (2026-10-06) and a real 18-minute
 # outage (2026-10-07) both produced "lost" and "restored" on time.
 # NOT VERIFIED: behaviour on a real sub-second grid dip.
@@ -32,6 +45,17 @@ input_boolean:
     # restart and only turn on when the bootstrap automation's grace
     # period ends. Restoring "on" would open alerts before Modbus is up.
     initial: false
+  # Restored across restarts on purpose (no initial:): "on" means an
+  # outage is in progress and its start is in the input_datetime below.
+  elfin_deye_grid_outage_active:
+    name: Elfin Deye Grid Outage Active
+    icon: mdi:transmission-tower-off
+
+input_datetime:
+  elfin_deye_grid_outage_started:
+    name: Elfin Deye Grid Outage Started
+    has_date: true
+    has_time: true
 
 input_number:
   elfin_deye_soc_low_threshold:
@@ -90,7 +114,13 @@ template:
                change during an outage. Without now() the counter would
                freeze at the moment the outage began. #}
             {% set _ = now() %}
-            {{ time_since(states.binary_sensor.elfin_deye_grid_available.last_changed) }}
+            {# Prefer the recorded start: it survives restarts. #}
+            {% set start = state_attr('input_datetime.elfin_deye_grid_outage_started', 'timestamp') %}
+            {% if is_state('input_boolean.elfin_deye_grid_outage_active', 'on') and start is number %}
+              {{ time_since(as_datetime(start)) }}
+            {% else %}
+              {{ time_since(states.binary_sensor.elfin_deye_grid_available.last_changed) }}
+            {% endif %}
           {% else %}
             —
           {% endif %}
@@ -118,23 +148,39 @@ template:
           {{ '%dh %02dm' | format(total_minutes // 60, total_minutes % 60) }}
 
   # ========================================================
-  # LAST COMPLETED OUTAGE DURATION (trigger-based, no helpers)
+  # LAST COMPLETED OUTAGE DURATION (trigger-based)
+  #
+  # Start = the recorded outage start while an outage is active (it
+  # survives restarts), else when Grid Available went off. The recorded
+  # start is only used if it is not later than that, as a sanity check.
+  # The "restored" automation clears the active flag 20 s later, so the
+  # flag is still on when this renders.
   # ========================================================
   - triggers:
       - trigger: state
         entity_id: binary_sensor.elfin_deye_grid_available
         from: "off"
         to: "on"
+    variables:
+      off_ts: "{{ as_timestamp(trigger.from_state.last_changed) }}"
+      rec_ts: "{{ state_attr('input_datetime.elfin_deye_grid_outage_started', 'timestamp') }}"
+      start_ts: >
+        {{ rec_ts if is_state('input_boolean.elfin_deye_grid_outage_active', 'on')
+                     and rec_ts is number and rec_ts <= off_ts
+           else off_ts }}
+      delta: "{{ (as_timestamp(trigger.to_state.last_changed) - start_ts) | int }}"
     sensor:
       - name: Elfin Deye Last Grid Outage Duration
         unique_id: elfin_deye_last_grid_outage_duration
         icon: mdi:history
         state: >
-          {% set delta = (trigger.to_state.last_changed - trigger.from_state.last_changed).total_seconds() %}
-          {{ '%dh %02dm' | format((delta // 3600) | int, ((delta % 3600) // 60) | int) }}
+          {{ '%dh %02dm' | format(delta // 3600, (delta % 3600) // 60) }}
         attributes:
-          duration_seconds: >
-            {{ (trigger.to_state.last_changed - trigger.from_state.last_changed).total_seconds() | int }}
+          duration_seconds: "{{ delta }}"
+          # Lets the startup bootstrap tell whether this value belongs to
+          # the outage it is closing.
+          started_at: "{{ start_ts | int }}"
+          ended_at: "{{ as_timestamp(trigger.to_state.last_changed) | int }}"
 
 # ========================================================
 # OUTAGE COUNT / TIME — today, this week, this month
@@ -202,6 +248,8 @@ automation:
     triggers:
       - trigger: homeassistant
         event: start
+    variables:
+      v_boot: "{{ as_timestamp(now()) | int }}"
     actions:
       - action: input_boolean.turn_off
         target:
@@ -210,6 +258,42 @@ automation:
       - action: input_boolean.turn_on
         target:
           entity_id: input_boolean.elfin_deye_system_ready
+
+      # Close an outage that ended while HA was down or during the grace
+      # period (the "restored" automation stays silent during the grace).
+      - if:
+          - condition: state
+            entity_id: input_boolean.elfin_deye_grid_outage_active
+            state: "on"
+          - condition: state
+            entity_id: binary_sensor.elfin_deye_grid_available
+            state: "on"
+        then:
+          - variables:
+              v_start: "{{ state_attr('input_datetime.elfin_deye_grid_outage_started', 'timestamp') | int(0) }}"
+              v_exact: >
+                {{ v_start > 0 and
+                   state_attr('sensor.elfin_deye_last_grid_outage_duration', 'started_at') | int(-1) == v_start }}
+              v_upper: "{{ (as_timestamp(now()) | int) - v_start }}"
+              v_soc: "{{ states('sensor.elfin_deye_battery_soc') }}"
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.elfin_deye_grid_outage_active
+          # Report only an outage that began BEFORE this start. One that
+          # began and ended inside the grace period is closed silently,
+          # like every other event in the grace (it may be a startup
+          # artifact).
+          - condition: template
+            value_template: "{{ 0 < v_start < v_boot }}"
+          - action: script.elfin_deye_notify_all
+            data:
+              title: "Deye: grid restored"
+              message: >-
+                External grid power is back (seen after a Home Assistant
+                restart). Outage started at
+                {{ v_start | timestamp_custom('%Y-%m-%d %H:%M') }}.
+                {% if v_exact %}Outage duration: {{ states('sensor.elfin_deye_last_grid_outage_duration') }}.{% else %}It ended while Home Assistant was down, so the duration is at most {{ '%dh %02dm' | format(v_upper // 3600, (v_upper % 3600) // 60) }}.{% endif %}
+                Battery SOC: {{ v_soc }}%.
 
   - id: elfin_deye_grid_outage_started
     alias: Elfin Deye — Grid Outage Started
@@ -223,11 +307,29 @@ automation:
           seconds: 20
     variables:
       v_soc: "{{ states('sensor.elfin_deye_battery_soc') }}"
-    conditions:
+      # False when HA restarted in the middle of an outage: the sensor
+      # comes back as unavailable -> off and re-triggers this, but the
+      # outage (and its alert) already happened.
+      v_new: "{{ is_state('input_boolean.elfin_deye_grid_outage_active', 'off') }}"
+    actions:
+      # Record the start once per outage, also during the startup grace.
+      - if:
+          - condition: template
+            value_template: "{{ v_new }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.elfin_deye_grid_outage_started
+            data:
+              timestamp: "{{ as_timestamp(trigger.to_state.last_changed) }}"
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.elfin_deye_grid_outage_active
+      - condition: template
+        value_template: "{{ v_new }}"
       - condition: state
         entity_id: input_boolean.elfin_deye_system_ready
         state: "on"
-    actions:
       - action: script.elfin_deye_notify_all
         data:
           title: "Deye: grid lost"
@@ -250,10 +352,16 @@ automation:
       v_duration: "{{ states('sensor.elfin_deye_last_grid_outage_duration') }}"
       v_l1: "{{ states('sensor.elfin_deye_ac_l1_voltage') }}"
     conditions:
+      # During the startup grace this does nothing at all, not even
+      # clearing the active flag: the bootstrap closes the outage and
+      # reports it when the grace ends.
       - condition: state
         entity_id: input_boolean.elfin_deye_system_ready
         state: "on"
     actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.elfin_deye_grid_outage_active
       - action: script.elfin_deye_notify_all
         data:
           title: "Deye: grid restored"

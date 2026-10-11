@@ -47,6 +47,14 @@ not used for detection.
 Not verified: a real sub-second grid dip. The stock logger stays
 connected as a backup until it is.
 
+Restart during an outage, 2026-10-08: an outage from 11:41 to 15:06
+(3h25m) was reported as "0h 54m", because Home Assistant restarted at
+about 14:12 and the duration was measured from the sensor's
+`last_changed`, which a restart resets. Fixed in
+`deye_grid_outage.yaml`: the outage start is kept in restored helpers
+and set only once per outage. The template logic was checked offline
+(this exact case gives 3h 25m); on live hardware it is NOT verified yet.
+
 ## Counter widths
 
 Verified with mbpoll: battery charge total 72/73 read `19878 / 0`
@@ -214,5 +222,6 @@ replace a check in Home Assistant, whose filters differ in details.
 - Register 194 on a real sub-second grid dip.
 - Grid power sign during export.
 - Grid-charge flag values other than 4 and 5.
+- Outage duration across a Home Assistant restart (fix of 2026-10-11).
 - PV registers (no panels on the test install).
 - Other LP1 models or firmware; RS485-to-TCP gateways other than the EW11.

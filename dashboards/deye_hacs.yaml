@@ -448,6 +448,11 @@ views:
                 statistics:
                   type: mean
                   period: 5minute
+              # Raw history (exact step times). The sensor changes a few
+              # times a day; an unavailable state (e.g. during a restart)
+              # becomes null and ApexCharts draws no segment into a null,
+              # so the step before it vanished. fill_raw: last carries the
+              # last known value over such gaps (applied before group_by).
               # History starts when the sensor is installed.
               - entity: sensor.elfin_deye_tou_target_soc
                 name: TOU target
@@ -455,6 +460,7 @@ views:
                 stroke_width: 2
                 stroke_dash: 4
                 curve: stepline
+                fill_raw: last
             apex_config:
               chart:
                 height: 210

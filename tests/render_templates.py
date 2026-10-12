@@ -288,6 +288,9 @@ check("diagnostics: 7-day grid timeline under the outages",
       [c.get("hours_to_show") for c in diag_secs[0]["cards"] if c["type"] == "history-graph"], [168])
 charts = [c for s_ in hacs["views"][0]["sections"] for c in s_["cards"]
           if c["type"] == "custom:apexcharts-card" and c.get("chart_type") != "radialBar"]
+target_series, = [sr for c in charts for sr in c["series"] if sr["entity"] == "sensor.elfin_deye_tou_target_soc"]
+check("SOC chart: target line carries the last value over gaps (raw history, stepline)",
+      (target_series.get("fill_raw"), target_series.get("curve"), "statistics" in target_series), ("last", "stepline", False))
 check("home charts: legend without values",
       [c.get("all_series_config", {}).get("show", {}).get("legend_value") for c in charts], [False, False])
 

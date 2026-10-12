@@ -210,6 +210,12 @@ function.
 | Pin 2 (485_A) | orange | A+ (pin 5) |
 | Pin 1 (485_B) | white-orange | B- (pin 6) |
 
+- RS485 signal ground: not wired; the link works without it here. A
+  likely reason (an explanation, not a measurement): the EW11 is
+  powered from the inverter's 12 V output, so both share a common
+  reference.
+- No termination resistor on the RS485 line (short cable).
+
 ### EW11 power (verified)
 
 From the inverter's RSD 12 V output: terminals 17 (+) / 18 (-) to EW11
@@ -230,6 +236,12 @@ EW11 spec).
 | Socket | TCP Server, local port 502, route Uart |
 | Max Accept | 3 (Home Assistant and `mbpoll` can connect at the same time) |
 | Timeout | 0 |
+
+### EW11 network (verified)
+
+The EW11 joins the home Wi-Fi as a client (STA mode). The router gives
+it a fixed IP through a DHCP reservation; that IP goes into
+`deye_modbus_host` in `secrets.yaml`.
 
 ### Modbus slave address
 

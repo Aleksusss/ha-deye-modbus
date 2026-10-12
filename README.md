@@ -124,8 +124,11 @@ write cannot catch a shift, because it reads the same wrong addresses.
 ### Grid-charge flags are a bit field
 
 Registers 274-279 read 5 with the LCD "Grid" box ticked and 4 without.
-That is not an on/off code: bits 0-1 are the charge source (1 = grid),
-bits 2-4 the slot mode (4 = "General"). Test bit 0, not `== 5`.
+That is not an on/off code. The bit layout comes from the kellerza/sunsynk
+single-phase map: bits 0-1 are the charge source (1 = grid), bits 2-4
+the slot mode (4 = "General"). Only 4 and 5 were observed here; the LCD
+test of the other bits (the "Gen" box) has not been done. Test bit 0,
+not `== 5`.
 
 ### `initial:` disables restore_state
 
@@ -186,11 +189,58 @@ The project writes to the inverter in exactly two places: the clock
 (22-24) and the six TOU SOC targets (268-273). Nothing else is ever
 written. See [docs/registers.md](docs/registers.md).
 
+## Hardware and wiring
+
+What this install uses. **Verified** = checked on this install;
+**public sources** = from manuals and other projects, not checked here.
+Check your own inverter's manual: cable colours do not guarantee
+function.
+
+### Inverter side
+
+- Use the RJ45 port labelled **"Modbus"**, not "Meter-485" and not
+  "BMS".
+- Pinout on this install (verified): pin 2 = 485_A, pin 1 = 485_B.
+  Public sources also show RS485 on pins 7/8 on some units.
+
+### Wiring on this install (verified)
+
+| Inverter RJ45 | Wire | EW11 |
+|---|---|---|
+| Pin 2 (485_A) | orange | A+ (pin 5) |
+| Pin 1 (485_B) | white-orange | B- (pin 6) |
+
+### EW11 power (verified)
+
+From the inverter's RSD 12 V output: terminals 17 (+) / 18 (-) to EW11
+VCC (pin 7) / GND (pin 8). The EW11 accepts 5-18 V DC.
+
+### EW11 settings (verified)
+
+| Setting | Value |
+|---|---|
+| Serial | 9600 baud, 8 data bits, no parity, 1 stop bit |
+| Buffer size | 512 |
+| Gap time | 50 ms |
+| Flow control | Half Duplex |
+| Protocol | Modbus (Modbus TCP <-> RTU conversion, not transparent) |
+| Socket | TCP Server, local port 502, route Uart |
+| Max Accept | 3 (Home Assistant and `mbpoll` can connect at the same time) |
+| Timeout | 0 |
+
+### Modbus slave address
+
+On the inverter LCD, **"Modbus SN"** is the Modbus slave address, not
+the serial number. It must match `slave:` in the packages: 1 on this
+install, used by every sensor in `deye_modbus.yaml` and by the write
+scripts in `deye_clock.yaml` and `deye_tou_control.yaml`. Do not use 0.
+
 ## Quick start
 
 Requirements: Home Assistant with packages enabled, and a Modbus TCP
-endpoint for the inverter's RS485 port. Gateway setup is out of scope;
-it is ready when this prints the battery SOC:
+endpoint for the inverter's RS485 port (see
+[Hardware and wiring](#hardware-and-wiring)). The gateway is ready when
+this prints the battery SOC:
 
 ```sh
 mbpoll -m tcp -a 1 -t 4 -r 185 -c 1 -1 <gateway-ip>
@@ -248,9 +298,28 @@ It also needs the optional `deye_grid_outage.yaml` and
 raw configuration editor; the file header lists the colors and the
 design notes.
 
-<!-- Screenshots (to be added): docs/img/hacs-home.png,
-     docs/img/hacs-tou.png, docs/img/hacs-diagnostics.png,
-     docs/img/hacs-home-phone.png -->
+### Screenshots
+
+Home: status chips, power flow with the SOC ring, Emergency card, the
+current TOU slot and the next changes, 24 h power and SOC charts (the
+dashed line is the TOU target), grid availability, energy today.
+
+![Home view on a desktop](docs/img/hacs-home.png)
+
+TOU: inverter, draft and snapshot bars with slot start times and the
+"now" line; draft sliders with the slot time ranges; snapshot and
+write-safety status.
+
+![TOU view](docs/img/hacs-tou.png)
+
+Diagnostics: outage statistics and the 7-day grid timeline, clock
+sync, BMS and temperatures, lifetime counters.
+
+![Diagnostics view](docs/img/hacs-diagnostics.png)
+
+Home on a phone:
+
+<img src="docs/img/hacs-home-phone.png" alt="Home view on a phone" width="320">
 
 ## Verified on hardware
 
@@ -289,7 +358,12 @@ results: [docs/testing.md](docs/testing.md).
   was caught, but how long it lasted was not measured. (The author still
   runs the stock logger alongside as a backup until this is confirmed.)
 - Grid power sign during export (the test install never exports).
-- Grid-charge flag values other than 4 and 5.
+- The actual autumn DST night (2026-10-25): not observed yet. Only the
+  drift trigger was tested (a +304 s offset corrected about 10 minutes
+  later); the switch at 04:00 itself moves to "Verified" after that
+  night.
+- Grid-charge flag values other than 4 and 5 (the bit layout is from
+  the kellerza/sunsynk map; the LCD "Gen" box test has not been done).
 - Outage duration across a Home Assistant restart (fix checked offline
   only).
 - PV registers (the test install has no panels).

@@ -231,6 +231,12 @@ Checked on the live install, 2026-10-11 (desktop Safari on an iMac
   its state text on each `current-change`, unlike a card-mod text,
   which changed only on a state change). The text block is sized to
   its content, so the slider starts right after the range and value.
+- **TOU target line across a restart** (2026-10-12). The dashed target
+  line had a gap from 11:00 to 12:25: the raw-history series ended at a
+  null (the sensor was briefly unavailable during the 12:26 restart),
+  and ApexCharts draws no segment into a null. With `fill_raw: last`
+  the line runs continuously through the restart; the data itself had
+  no gap.
 
 ## Inverter losses: cross-check with the SOC balance
 
@@ -296,7 +302,11 @@ tools -> Template with the real sensors before relying on it.
 - Register 194 on a dip of known sub-second length (a very short dip
   was caught on 2026-10-08; its length is unknown).
 - Grid power sign during export.
-- Grid-charge flag values other than 4 and 5.
+- The actual autumn DST night (2026-10-25); only the drift trigger
+  (+304 s) is verified. Check the logbook that morning (procedure in
+  "Clock: drift / DST trigger").
+- Grid-charge flag values other than 4 and 5 (bit layout from the
+  kellerza/sunsynk map; LCD "Gen" box test not done).
 - Outage duration across a Home Assistant restart (fix of 2026-10-11).
 - PV registers (no panels on the test install).
 - Other LP1 models or firmware; RS485-to-TCP gateways other than the EW11.

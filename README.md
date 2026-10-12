@@ -104,7 +104,8 @@ and outage durations include that minute of reconnect time.
 Measuring an outage as "now minus when the sensor went off" breaks as
 soon as Home Assistant restarts mid-outage: the sensor comes back with
 a fresh `last_changed`. A 3h25m outage was once reported as 0h54m. The
-outage start is now stored in restored helpers, set once per outage.
+outage start is now stored in restored helpers, set once per outage;
+verified live on 2026-10-12 with a restart in the middle of an outage.
 
 ### TOU registers: four blocks, and the power block is easy to shift
 
@@ -350,6 +351,10 @@ results: [docs/testing.md](docs/testing.md).
   65-70 s, roughly the reconnect hold alone; "lost" and "restored" fired,
   as did the stock logger's alerts. The lights did not flicker. The
   dip's own length is unknown.
+- Outage duration across a Home Assistant restart (2026-10-12): grid
+  breaker off for about 3 minutes, Home Assistant restarted right after
+  "lost"; no second "lost", and "restored" reported 0h 04m (the outage
+  plus the ~70 s reconnect hold).
 - Inverter losses daily value (2026-10-07): 1.6 kWh, about 11% of grid
   import, consistent with the measured charge conversion loss and a
   cross-check against the battery SOC balance.
@@ -378,9 +383,8 @@ results: [docs/testing.md](docs/testing.md).
   later); the switch at 04:00 itself moves to "Verified" after that
   night.
 - Grid-charge flag values other than 4 and 5 (the bit layout is from
-  the kellerza/sunsynk map; the LCD "Gen" box test has not been done).
-- Outage duration across a Home Assistant restart (fix checked offline
-  only).
+  the kellerza/sunsynk map; the LCD "Gen" box test is skipped on
+  purpose: the test install has no generator).
 - PV registers (the test install has no panels).
 - Other LP1 models or firmware versions, and RS485-to-TCP gateways
   other than the EW11.

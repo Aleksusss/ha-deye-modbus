@@ -213,7 +213,10 @@ function.
 ### EW11 power (verified)
 
 From the inverter's RSD 12 V output: terminals 17 (+) / 18 (-) to EW11
-VCC (pin 7) / GND (pin 8). The EW11 accepts 5-18 V DC.
+VCC (pin 7) / GND (pin 8). The RSD 12 V output is meant for
+rapid-shutdown devices; on this install it powers the EW11
+continuously, check yours. The EW11 accepts 5-18 V DC (public sources:
+EW11 spec).
 
 ### EW11 settings (verified)
 

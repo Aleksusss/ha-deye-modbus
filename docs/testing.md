@@ -181,7 +181,10 @@ Autumn DST night, 2026-10-25 (verified, from the history of
    only counts a raw read newer than the write with an OK offset (about
    0 or the ±3600 s phantom) and otherwise reads once more, 10 s later,
    before alerting. Template checks cover the stale, fresh, phantom and
-   retry cases; the fix is not yet tested on a live DST night.
+   retry cases. Deployed 2026-10-28: a manual sync at 11:00:50 logged
+   "Offset after write: 4 seconds" after a single read-back (script
+   time 6 s, no retry, no warning). The retry path (a stale first read)
+   is covered only by the template checks.
 
 ## Write safety (TOU SOC control)
 

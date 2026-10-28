@@ -378,8 +378,9 @@ results: [docs/testing.md](docs/testing.md).
   the fall-back; one clock write at about 03:05 winter time; the
   phantom +3600 s until 04:00, then about 0; the inverter display shows
   the correct time. That night's read-back sent a false "could not be
-  verified" warning; fixed since (see the DST gotcha), the fix checked
-  offline only.
+  verified" warning; fixed since (see the DST gotcha). The fixed
+  read-back passed a manual sync on 2026-10-28; its retry path is
+  checked offline only.
 - Register 175 = inverter power, 178 = load; grid and battery signs.
 - TOU block mapping against the LCD.
 - TOU snapshot survives restarts; Apply and Capture blocked during

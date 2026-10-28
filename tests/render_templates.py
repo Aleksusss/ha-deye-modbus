@@ -336,6 +336,33 @@ for off, want in [("2", "True"), ("-9", "True"), ("3601", "True"), ("-3598", "Tr
                   ("304", "False"), ("3700", "False"), ("3500", "False"), ("unavailable", "False")]:
     check(f"clock verify offset {off}", Env({}, d).r(cond, offset_after=off), want)
 
+# ---- 5b. clock read-back retry: fresh read + OK offset, at most 2 attempts ----
+until = [x for x in clk_seq if "repeat" in x][0]["repeat"]["until"][0]["value_template"]
+
+
+class StatesWithObjects:
+    """states('x') plus states.sensor.x, as in Home Assistant."""
+    def __init__(self, st, objs):
+        self.st, self.sensor = st, types.SimpleNamespace(**objs)
+
+    def __call__(self, k):
+        return self.st.get(k, "unknown")
+
+
+def readback(offset, raw_at, index, write_at=d.replace(hour=3, minute=5)):
+    raw = types.SimpleNamespace(state="x", last_updated=raw_at)
+    states_ = StatesWithObjects({"sensor.elfin_deye_clock_offset": offset}, {"elfin_deye_clock_raw": raw})
+    return Env({}, d).r(until, states=states_, write_ts=str(write_at.timestamp()),
+                        repeat={"index": index})
+
+
+w = d.replace(hour=3, minute=5)
+check("readback: stale read (before the write) -> retry", readback("-3549", w - dt.timedelta(seconds=30), 1), "False")
+check("readback: fresh read, offset ~0 -> done", readback("1", w + dt.timedelta(seconds=5), 1), "True")
+check("readback: fresh read, DST phantom +3600 -> done", readback("3601", w + dt.timedelta(seconds=5), 1), "True")
+check("readback: fresh read, offset still -3549 -> retry", readback("-3549", w + dt.timedelta(seconds=5), 1), "False")
+check("readback: second attempt always ends the loop", readback("-3549", w - dt.timedelta(seconds=30), 2), "True")
+
 # ---- 6. outage duration across restarts ----
 go = load("packages/optional/deye_grid_outage.yaml")
 trig = [b for b in go["template"] if "triggers" in b][0]

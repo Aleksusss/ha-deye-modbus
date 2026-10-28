@@ -50,7 +50,18 @@ write all three in **one** 0x10 request.
 A daily clock check at 03:05 runs *before* the autumn switch at 04:00,
 so the inverter would run an hour off — and shift every TOU slot by an
 hour — until the next day. This project also syncs when the offset has
-stayed over 60 s for 10 minutes, at most once per hour.
+stayed over 60 s for 10 minutes, at most once per hour. (On 2026-10-25
+the 03:05 check also ran in the repeated hour, at 03:05 winter time,
+and corrected the clock there; the drift trigger stays as the safety
+net.)
+
+Right after a correct write inside the repeated hour 03:00-04:00, the
+inverter time is ambiguous and reads as summer time: the offset shows
+a phantom +3600 s until 04:00. The sync accepts about 0 or about
+±3600 s. Its read-back must also be fresh: on that night a read-back
+taken too soon after the write returned the pre-write offset and sent
+a false "could not be verified" warning, so it now requires a read
+newer than the write and retries once.
 
 ### Lifetime counters are 32-bit, low word first
 
@@ -363,6 +374,12 @@ results: [docs/testing.md](docs/testing.md).
 - Single-request clock write (0x10, 3 registers).
 - Drift/DST trigger: a +304 s offset was corrected about 10 minutes
   later.
+- The autumn DST night (2026-10-25): offset about -3550 s right after
+  the fall-back; one clock write at about 03:05 winter time; the
+  phantom +3600 s until 04:00, then about 0; the inverter display shows
+  the correct time. That night's read-back sent a false "could not be
+  verified" warning; fixed since (see the DST gotcha), the fix checked
+  offline only.
 - Register 175 = inverter power, 178 = load; grid and battery signs.
 - TOU block mapping against the LCD.
 - TOU snapshot survives restarts; Apply and Capture blocked during
@@ -378,10 +395,6 @@ results: [docs/testing.md](docs/testing.md).
   was caught, but how long it lasted was not measured. (The author still
   runs the stock logger alongside as a backup until this is confirmed.)
 - Grid power sign during export (the test install never exports).
-- The actual autumn DST night (2026-10-25): not observed yet. Only the
-  drift trigger was tested (a +304 s offset corrected about 10 minutes
-  later); the switch at 04:00 itself moves to "Verified" after that
-  night.
 - Grid-charge flag values other than 4 and 5 (the bit layout is from
   the kellerza/sunsynk map; the LCD "Gen" box test is skipped on
   purpose: the test install has no generator).

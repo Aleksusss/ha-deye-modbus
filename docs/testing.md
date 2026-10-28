@@ -158,24 +158,30 @@ resync: the `drift_check` trigger (offset over 60 s for 10 minutes)
 fired about 10 minutes later and resynced the clock; the offset returned
 to about 0. This is the path that corrects the clock after a DST switch.
 
-Expected on the autumn DST night (next: 2026-10-25), not yet observed:
+Autumn DST night, 2026-10-25 (verified, from the history of
+`sensor.elfin_deye_clock_offset`):
 
-1. 03:05 summer time: daily check, offset ~0, no write.
-2. 04:00 summer time becomes 03:00 winter time. From the next read the
-   offset is about -3600 s; Clock Needs Sync turns on.
-3. About 03:11 winter time `drift_check` fires and writes the correct
-   time.
-4. The read-back right after that write shows a **phantom +3600 s**:
-   the inverter time falls in the repeated hour 03:00-04:00, which is
-   ambiguous and is read as summer time. The sync script therefore
-   accepts an offset of about ±3600 s as well as about 0, so this does
-   not send a "could not be verified" warning.
-5. A second `drift_check` around 03:22 is blocked by the one-hour
-   cooldown. After 04:00 winter time the offset reads about 0 again.
-
-Check the logbook the next morning. If the offset reached about 0
-before step 3, something else (possibly the stock logger) set the
-inverter clock.
+1. About 03:01 winter time, right after the fall-back: offset about
+   -3550 s (the inverter still on summer time, plus its drift).
+2. One clock write at about 03:05 winter time: the daily check ran in
+   the repeated hour and corrected the clock, before `drift_check`'s
+   10 minutes were up. The offset graph shows a single step, no further
+   writes.
+3. From 03:05 to 04:00 the offset read **+3600 s**: the documented
+   phantom. The inverter time lies in the repeated hour 03:00-04:00,
+   which is ambiguous and is read as summer time.
+4. After 04:00 the offset read about 0 (8 s at 18:50); the inverter
+   display showed the correct time.
+5. **False alarm:** "inverter clock sync could not be verified. Offset
+   after writing: -3549 s". That is the pre-write offset, so the
+   read-back looked at data from before the write (the regular read a
+   minute later showed the new time). Whether the inverter applied the
+   write later or the template had not re-rendered yet cannot be told
+   apart from this value. Fixed in `deye_clock.yaml`: the read-back
+   only counts a raw read newer than the write with an OK offset (about
+   0 or the ±3600 s phantom) and otherwise reads once more, 10 s later,
+   before alerting. Template checks cover the stale, fresh, phantom and
+   retry cases; the fix is not yet tested on a live DST night.
 
 ## Write safety (TOU SOC control)
 
@@ -307,9 +313,6 @@ tools -> Template with the real sensors before relying on it.
 - Register 194 on a dip of known sub-second length (a very short dip
   was caught on 2026-10-08; its length is unknown).
 - Grid power sign during export.
-- The actual autumn DST night (2026-10-25); only the drift trigger
-  (+304 s) is verified. Check the logbook that morning (procedure in
-  "Clock: drift / DST trigger").
 - Grid-charge flag values other than 4 and 5 (bit layout from the
   kellerza/sunsynk map; the LCD "Gen" box test is skipped on purpose:
   no generator on the test install).

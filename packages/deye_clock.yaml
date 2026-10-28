@@ -198,6 +198,11 @@ script:
       # inverter never holds a half-written date/time. Verified with
       # mbpoll on 2026-10-06 ("Written 3 references", clock moved as
       # written). A list `value:` makes HA use 0x10.
+      # Reference for the read-back below: a read that is not newer than
+      # this moment cannot show the write.
+      - variables:
+          write_ts: "{{ as_timestamp(now()) }}"
+
       - action: modbus.write_register
         data:
           hub: deye_elfin
@@ -205,19 +210,43 @@ script:
           address: 22
           value: "{{ regs }}"
 
-      - delay:
-          seconds: 3
-
       # Read-back: re-read 22-24 now instead of waiting for the
       # scan_interval. A failed Modbus write does not fail the action
       # (HA only logs it), so this is the only failure signal.
-      - action: homeassistant.update_entity
-        target:
-          entity_id: sensor.elfin_deye_clock_raw
-
-      # Let the decoded template sensors re-render.
-      - delay:
-          seconds: 2
+      #
+      # Up to two attempts. On the DST night of 2026-10-25 the single
+      # read-back reported exactly the pre-write offset (-3549 s) while
+      # the write had worked (the next regular read showed the new
+      # time), so the check had looked at data from before the write.
+      # An attempt counts only if the raw read is newer than the write
+      # and the offset is OK; otherwise wait and read once more before
+      # alerting.
+      - repeat:
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ repeat.index > 1 }}"
+              then:
+                - delay:
+                    seconds: 10
+            - delay:
+                seconds: 3
+            - action: homeassistant.update_entity
+              target:
+                entity_id: sensor.elfin_deye_clock_raw
+            # Let the decoded template sensors re-render.
+            - delay:
+                seconds: 2
+          until:
+            - condition: template
+              value_template: >
+                {% set raw = states.sensor.elfin_deye_clock_raw %}
+                {% set o = states('sensor.elfin_deye_clock_offset') %}
+                {% set a = (o | float(99999)) | abs %}
+                {% set fresh = raw is not none
+                   and as_timestamp(raw.last_updated) > write_ts | float(0) %}
+                {{ repeat.index >= 2
+                   or (fresh and o | is_number and (a <= 10 or (a - 3600) | abs < 10)) }}
 
       - variables:
           offset_after: "{{ states('sensor.elfin_deye_clock_offset') }}"

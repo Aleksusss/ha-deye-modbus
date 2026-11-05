@@ -410,8 +410,10 @@ results: [docs/testing.md](docs/testing.md).
 ## Not verified
 
 - Register 194 on a dip of known sub-second length: the 2026-10-08 dip
-  was caught, but how long it lasted was not measured. (The author still
-  runs the stock logger alongside as a backup until this is confirmed.)
+  was caught, but how long it lasted was not measured. (The stock logger
+  hardware still runs for the vendor cloud, but its Home Assistant
+  integration was removed on 2026-11-06; register 194 is now the only
+  grid-state source in Home Assistant.)
 - Grid power sign during export (the test install never exports).
 - Grid-charge flag values other than 4 and 5 (the bit layout is from
   the kellerza/sunsynk map; the LCD "Gen" box test is skipped on

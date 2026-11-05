@@ -54,8 +54,10 @@ length is unknown: register 194 shows that a dip happened, not how long
 it lasted. The alert timestamps (17:16) and the history (17:18-17:19)
 differ by about 2 minutes; the cause was not checked.
 
-Not verified: a dip of known sub-second length. The stock logger stays
-connected as a backup until it is.
+Not verified: a dip of known sub-second length. The stock logger
+hardware still runs (vendor cloud), but its Home Assistant integration
+was removed on 2026-11-06; register 194 is now the only grid-state
+source in Home Assistant.
 
 Restart during an outage, 2026-10-08: an outage from 11:41 to 15:06
 (3h25m) was reported as "0h 54m", because Home Assistant restarted at

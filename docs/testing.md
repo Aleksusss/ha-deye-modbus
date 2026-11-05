@@ -291,6 +291,14 @@ Of the 1.6 kWh, charge conversion at ~5% accounts for about 0.5 kWh;
 the rest is discharge conversion at a low house load (~0.5 kW, where
 inverters are least efficient) plus the inverter's own standby draw.
 
+## Inverter status (register 59)
+
+Codes per kellerza/sunsynk and ha-solarman: 0 standby, 1 self-test,
+2 normal, 3 alarm, 4 fault (kellerza also lists 5 activating).
+Deployed 2026-11-06 ~00:27 (verified): the raw register reads 2 and
+Elfin Deye Inverter Status shows Normal in normal operation. Other codes
+have not been seen yet.
+
 ## Template checks
 
 `tests/render_templates.py` loads the templates straight from the
@@ -328,6 +336,3 @@ tools -> Template with the real sensors before relying on it.
   the next real outage, check: the estimate is plausible for the load,
   the duration matches the logbook, the SOC pair matches history, and
   no "Inverter status" line while the inverter shows Normal.
-- Inverter status, register 59 (2 = Normal per kellerza/sunsynk and
-  ha-solarman): after deploy, Elfin Deye Inverter Status should read
-  Normal in normal operation.

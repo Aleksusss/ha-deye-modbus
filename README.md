@@ -404,6 +404,9 @@ results: [docs/testing.md](docs/testing.md).
 - Grid import migration to the 32-bit template sensor without losing
   Energy statistics.
 
+- Inverter status, register 59 (2026-11-06): reads 2, decoded as
+  Normal, in normal operation.
+
 ## Not verified
 
 - Register 194 on a dip of known sub-second length: the 2026-10-08 dip
@@ -417,8 +420,8 @@ results: [docs/testing.md](docs/testing.md).
 - Other LP1 models or firmware versions, and RS485-to-TCP gateways
   other than the EW11.
 - The enriched outage messages (load, runtime estimate, duration with
-  seconds, SOC at loss -> now) and the inverter status register 59: so
-  far checked by the offline template checks only, until a real outage.
+  seconds, SOC at loss -> now, status line): so far checked by the
+  offline template checks only, until a real outage.
 
 ## Use at your own risk
 

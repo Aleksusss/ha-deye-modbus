@@ -342,6 +342,23 @@ modbus:
         scan_interval: 5
 
       # ========================================================
+      # INVERTER STATE — register 59
+      #
+      # 0 standby, 1 self-test, 2 normal, 3 alarm, 4 fault: kellerza/sunsynk
+      # "Overall state" (which also lists 5 activating) and ha-solarman
+      # deye_hybrid "Device State" agree. Decoded by the template sensor
+      # Elfin Deye Inverter Status below.
+      # NOT VERIFIED on this inverter yet.
+      # ========================================================
+      - name: Elfin Deye Inverter State Raw
+        unique_id: elfin_deye_inverter_state_raw
+        slave: 1
+        address: 59
+        input_type: holding
+        data_type: uint16
+        scan_interval: 30
+
+      # ========================================================
       # TEMPERATURES (raw value is (°C + 100) * 10)
       # ========================================================
       - name: Elfin Deye DC Temperature
@@ -903,3 +920,15 @@ template:
         state: >
           {% set raw = states('sensor.elfin_deye_grid_import_total_raw').split(',') %}
           {{ (((raw[1] | int(0)) * 65536 + (raw[0] | int(0))) * 0.1) | round(1) }}
+
+      # Register 59 decoded (see the raw sensor). Unknown codes are shown
+      # as "Unknown (N)" rather than hidden.
+      - name: Elfin Deye Inverter Status
+        unique_id: elfin_deye_inverter_status
+        icon: mdi:state-machine
+        availability: >
+          {{ states('sensor.elfin_deye_inverter_state_raw') | is_number }}
+        state: >
+          {%- set raw = states('sensor.elfin_deye_inverter_state_raw') | int(-1) -%}
+          {%- set names = {0: 'Standby', 1: 'Self-test', 2: 'Normal', 3: 'Alarm', 4: 'Fault', 5: 'Activating'} -%}
+          {{ names.get(raw, 'Unknown (' ~ raw ~ ')') }}

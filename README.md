@@ -110,6 +110,16 @@ to 0 instantly and, when the grid returns, stays 0 for about 70 s while
 the inverter checks grid stability. A 5 s poll cannot miss an outage,
 and outage durations include that minute of reconnect time.
 
+### Outage messages
+
+"Grid lost": battery SOC, load (register 178) and, if a usable capacity
+is set, an estimate: (SOC - min SOC) / 100 × kWh × 1000 / load W, as
+"~9 h 20 m". No estimate below 50 W load or with the load unavailable.
+No grid voltage: it can be stale at that moment. "Grid restored":
+duration with seconds ("3m 40s", hours from 1 h), SOC at loss -> now,
+grid voltage L1, and the inverter status (register 59) only when it is
+not Normal.
+
 ### A restart resets `last_changed`
 
 Measuring an outage as "now minus when the sensor went off" breaks as
@@ -296,6 +306,10 @@ mbpoll -m tcp -a 1 -t 4 -r 185 -c 1 -1 <gateway-ip>
    Apply and Emergency are blocked.
 8. Optional: paste `dashboards/deye.yaml` into a new dashboard's raw
    configuration editor.
+9. With `deye_grid_outage.yaml`: for a runtime estimate in "grid lost",
+   set **Elfin Deye Battery Usable Capacity** (kWh) and **Elfin Deye
+   Battery Min SOC** (%) once. Both are restored and start at 0 on a new
+   install; capacity 0 means no estimate.
 
 If your Energy dashboard has solar or grid export configured, set the
 PV and export counters in `deye_inverter_losses.yaml`; see its header.
@@ -402,6 +416,9 @@ results: [docs/testing.md](docs/testing.md).
 - PV registers (the test install has no panels).
 - Other LP1 models or firmware versions, and RS485-to-TCP gateways
   other than the EW11.
+- The enriched outage messages (load, runtime estimate, duration with
+  seconds, SOC at loss -> now) and the inverter status register 59: so
+  far checked by the offline template checks only, until a real outage.
 
 ## Use at your own risk
 

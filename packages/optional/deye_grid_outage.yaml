@@ -67,6 +67,42 @@ input_number:
     mode: box
     unit_of_measurement: "%"
 
+  # The three helpers below have no initial: on purpose, so they are
+  # restored across restarts (an initial: would reset them on every
+  # start). A new install therefore starts at min: set capacity and
+  # min SOC once in the UI.
+  #
+  # Usable battery energy for the runtime estimate in "grid lost".
+  # 0 = no estimate.
+  elfin_deye_battery_usable_capacity:
+    name: Elfin Deye Battery Usable Capacity
+    icon: mdi:battery-high
+    min: 0
+    max: 100
+    step: 0.1
+    mode: box
+    unit_of_measurement: "kWh"
+  # The SOC the estimate runs down to (e.g. 10 %). Used only for the
+  # estimate; it does not change any inverter setting.
+  elfin_deye_battery_min_soc:
+    name: Elfin Deye Battery Min SOC
+    icon: mdi:battery-10
+    min: 0
+    max: 50
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+  # SOC when the current outage began, for "before -> now" in "grid
+  # restored". -1 = not recorded (SOC was unavailable at that moment).
+  elfin_deye_grid_outage_soc_at_loss:
+    name: Elfin Deye Grid Outage SOC At Loss
+    icon: mdi:battery-clock
+    min: -1
+    max: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+
 template:
   # ========================================================
   # GRID AVAILABILITY + CURRENT OUTAGE DURATION
@@ -177,6 +213,13 @@ template:
           {{ '%dh %02dm' | format(delta // 3600, (delta % 3600) // 60) }}
         attributes:
           duration_seconds: "{{ delta }}"
+          # For the notifications: "3m 40s", or "1h 05m 12s" from 1 h.
+          duration_text: >-
+            {%- if delta >= 3600 -%}
+              {{ '%dh %02dm %02ds' | format(delta // 3600, (delta % 3600) // 60, delta % 60) }}
+            {%- else -%}
+              {{ '%dm %02ds' | format(delta // 60, delta % 60) }}
+            {%- endif -%}
           # Lets the startup bootstrap tell whether this value belongs to
           # the outage it is closing.
           started_at: "{{ start_ts | int }}"
@@ -275,7 +318,20 @@ automation:
                 {{ v_start > 0 and
                    state_attr('sensor.elfin_deye_last_grid_outage_duration', 'started_at') | int(-1) == v_start }}
               v_upper: "{{ (as_timestamp(now()) | int) - v_start }}"
+              v_upper_text: >-
+                {%- if v_upper >= 3600 -%}
+                  {{ '%dh %02dm %02ds' | format(v_upper // 3600, (v_upper % 3600) // 60, v_upper % 60) }}
+                {%- else -%}
+                  {{ '%dm %02ds' | format(v_upper // 60, v_upper % 60) }}
+                {%- endif -%}
+              v_duration: >-
+                {{ state_attr('sensor.elfin_deye_last_grid_outage_duration', 'duration_text')
+                   or states('sensor.elfin_deye_last_grid_outage_duration') }}
               v_soc: "{{ states('sensor.elfin_deye_battery_soc') }}"
+              # The active flag is on here, so the helper belongs to this outage.
+              v_soc_before: "{{ states('input_number.elfin_deye_grid_outage_soc_at_loss') | float(-1) }}"
+              v_l1: "{{ states('sensor.elfin_deye_ac_l1_voltage') }}"
+              v_status: "{{ states('sensor.elfin_deye_inverter_status') }}"
           - action: input_boolean.turn_off
             target:
               entity_id: input_boolean.elfin_deye_grid_outage_active
@@ -292,8 +348,10 @@ automation:
                 External grid power is back (seen after a Home Assistant
                 restart). Outage started at
                 {{ v_start | timestamp_custom('%Y-%m-%d %H:%M') }}.
-                {% if v_exact %}Outage duration: {{ states('sensor.elfin_deye_last_grid_outage_duration') }}.{% else %}It ended while Home Assistant was down, so the duration is at most {{ '%dh %02dm' | format(v_upper // 3600, (v_upper % 3600) // 60) }}.{% endif %}
-                Battery SOC: {{ v_soc }}%.
+                {% if v_exact %}Outage duration: {{ v_duration }}.{% else %}It ended while Home Assistant was down, so the duration is at most {{ v_upper_text }}.{% endif %}
+                Battery SOC: {% if v_soc_before | float(-1) >= 0 %}{{ v_soc_before | int }}% -> {% endif %}{{ v_soc }}%.{% if v_l1 | is_number %}
+                Grid voltage L1: {{ v_l1 }} V.{% endif %}{% if v_status not in ['Normal', 'unknown', 'unavailable'] %}
+                Inverter status: {{ v_status }}.{% endif %}
 
   - id: elfin_deye_grid_outage_started
     alias: Elfin Deye — Grid Outage Started
@@ -311,6 +369,22 @@ automation:
       # comes back as unavailable -> off and re-triggers this, but the
       # outage (and its alert) already happened.
       v_new: "{{ is_state('input_boolean.elfin_deye_grid_outage_active', 'off') }}"
+      # Register 178, live on battery too.
+      v_load: "{{ states('sensor.elfin_deye_load_power') }}"
+      v_min_soc: "{{ states('input_number.elfin_deye_battery_min_soc') | float(0) }}"
+      # Minutes from v_soc down to the min SOC at the current load:
+      # (SOC - min) / 100 * usable kWh * 1000 / load W, in hours, x 60.
+      # -1 = no estimate: capacity 0, load unavailable or below 50 W
+      # (the result would be meaningless), or SOC already at the min.
+      # Uses HA's round (Python's, half to even) on whole minutes.
+      v_runtime_min: >-
+        {%- set cap = states('input_number.elfin_deye_battery_usable_capacity') | float(0) -%}
+        {%- if cap > 0 and v_soc | is_number and v_load | is_number
+               and v_load | float >= 50 and v_soc | float > v_min_soc -%}
+          {{ ((v_soc | float - v_min_soc) / 100 * cap * 1000 / (v_load | float) * 60) | round(0) | int }}
+        {%- else -%}
+          -1
+        {%- endif -%}
     actions:
       # Record the start once per outage, also during the startup grace.
       - if:
@@ -322,6 +396,11 @@ automation:
               entity_id: input_datetime.elfin_deye_grid_outage_started
             data:
               timestamp: "{{ as_timestamp(trigger.to_state.last_changed) }}"
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.elfin_deye_grid_outage_soc_at_loss
+            data:
+              value: "{{ v_soc | float if v_soc | is_number else -1 }}"
           - action: input_boolean.turn_on
             target:
               entity_id: input_boolean.elfin_deye_grid_outage_active
@@ -333,9 +412,14 @@ automation:
       - action: script.elfin_deye_notify_all
         data:
           title: "Deye: grid lost"
+          # No grid voltage here: register 150 can hold a stale value at
+          # this moment (see the header).
           message: >-
             External grid power has been lost.
-            Battery SOC: {{ v_soc }}%.
+            Battery SOC: {{ v_soc }}%.{% if v_load | is_number %}
+            Load: {{ v_load | int }} W.{% endif %}{% if v_runtime_min | int(-1) >= 0 %}
+            Estimated runtime to {{ v_min_soc | int }}% SOC at this load:
+            ~{{ v_runtime_min // 60 }} h {{ '%02d' | format(v_runtime_min % 60) }} m.{% endif %}
 
   - id: elfin_deye_grid_restored
     alias: Elfin Deye — Grid Restored
@@ -349,8 +433,18 @@ automation:
           seconds: 20
     variables:
       v_soc: "{{ states('sensor.elfin_deye_battery_soc') }}"
-      v_duration: "{{ states('sensor.elfin_deye_last_grid_outage_duration') }}"
+      # duration_text has seconds; the state ("0h 03m") is the fallback
+      # until the sensor has rendered once with the new attribute.
+      v_duration: >-
+        {{ state_attr('sensor.elfin_deye_last_grid_outage_duration', 'duration_text')
+           or states('sensor.elfin_deye_last_grid_outage_duration') }}
+      # Rendered before the actions clear the active flag: only an
+      # active outage owns the recorded SOC.
+      v_soc_before: >-
+        {{ states('input_number.elfin_deye_grid_outage_soc_at_loss') | float(-1)
+           if is_state('input_boolean.elfin_deye_grid_outage_active', 'on') else -1 }}
       v_l1: "{{ states('sensor.elfin_deye_ac_l1_voltage') }}"
+      v_status: "{{ states('sensor.elfin_deye_inverter_status') }}"
     conditions:
       # During the startup grace this does nothing at all, not even
       # clearing the active flag: the bootstrap closes the outage and
@@ -367,11 +461,13 @@ automation:
           title: "Deye: grid restored"
           # Voltage is informational here: the grid is back, so the
           # register is live again. It does not gate the alert.
+          # Inverter status is shown only when it is not Normal.
           message: >-
             External grid power is back.
             Outage duration: {{ v_duration }}.
-            Battery SOC: {{ v_soc }}%.{% if v_l1 | is_number %}
-            Grid voltage L1: {{ v_l1 }} V.{% endif %}
+            Battery SOC: {% if v_soc_before | float(-1) >= 0 %}{{ v_soc_before | int }}% -> {% endif %}{{ v_soc }}%.{% if v_l1 | is_number %}
+            Grid voltage L1: {{ v_l1 }} V.{% endif %}{% if v_status not in ['Normal', 'unknown', 'unavailable'] %}
+            Inverter status: {{ v_status }}.{% endif %}
 
   - id: elfin_deye_low_soc_alert
     alias: Elfin Deye — Low Battery SOC Alert

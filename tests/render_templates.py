@@ -400,8 +400,9 @@ bcond = [x for x in then if x.get("condition") == "template"][0]["value_template
 bmsg = [x for x in then if x.get("action") == "script.elfin_deye_notify_all"][0]["data"]["message"]
 
 
-def bootstrap(start, sensor_started_at, boot_at, now):
-    stt = {"sensor.elfin_deye_last_grid_outage_duration": "3h 25m", "sensor.elfin_deye_battery_soc": "80"}
+def bootstrap(start, sensor_started_at, boot_at, now, soc_at_loss="unknown"):
+    stt = {"sensor.elfin_deye_last_grid_outage_duration": "3h 25m", "sensor.elfin_deye_battery_soc": "80",
+           "input_number.elfin_deye_grid_outage_soc_at_loss": soc_at_loss, "sensor.elfin_deye_inverter_status": "Normal"}
     att = {("input_datetime.elfin_deye_grid_outage_started", "timestamp"): start.timestamp(),
            ("sensor.elfin_deye_last_grid_outage_duration", "started_at"): sensor_started_at}
     e = Env(stt, now, att)
@@ -418,6 +419,87 @@ c, m = bootstrap(D(11, 41), 0, D(14, 12), D(15, 10))
 check("bootstrap approximate when sensor stale", "at most 3h 29m" in m, True)
 c, m = bootstrap(D(14, 12, 40), 0, D(14, 12), D(14, 14))
 check("bootstrap silent for outage inside grace", c, "False")
+c, m = bootstrap(D(11, 41), 0, D(14, 12), D(15, 10), soc_at_loss="95.0")
+check("bootstrap SOC before -> now", "Battery SOC: 95% -> 80%." in m and "Inverter status" not in m, True)
 print("sample bootstrap message:", bootstrap(D(11, 41), 0, D(14, 12), D(15, 10))[1])
+
+# ---- 7. outage notifications: runtime estimate, duration text, SOC before -> now, status ----
+auto = {a["id"]: a for a in go["automation"]}
+
+
+def notify_msg(a):
+    acts = a["actions"]
+    return [x for x in acts if x.get("action") == "script.elfin_deye_notify_all"][0]["data"]["message"]
+
+
+def render_auto(a, stt, att=None, now=D(12, 0)):
+    e = Env(stt, now, att)
+    var = {"trigger": types.SimpleNamespace(to_state=types.SimpleNamespace(last_changed=now))}
+    for k, tpl in a["variables"].items():
+        var[k] = native(e.r(tpl, **var))
+    return var, " ".join(e.r(notify_msg(a), **var).split())
+
+
+def lost(soc="80", load="1000", cap="12.9", min_soc="10"):
+    stt = {"sensor.elfin_deye_battery_soc": soc, "sensor.elfin_deye_load_power": load,
+           "input_number.elfin_deye_battery_usable_capacity": cap,
+           "input_number.elfin_deye_battery_min_soc": min_soc,
+           "input_boolean.elfin_deye_grid_outage_active": "off"}
+    return render_auto(auto["elfin_deye_grid_outage_started"], stt)[1]
+
+
+# (80 - 10) / 100 * 12.9 kWh * 1000 / 1000 W = 9.03 h = 541.8 min -> 542
+check("lost: estimate shown", lost(),
+      "External grid power has been lost. Battery SOC: 80%. Load: 1000 W. "
+      "Estimated runtime to 10% SOC at this load: ~9 h 02 m.")
+check("lost: ~9 h 20 m at 968 W", "~9 h 20 m." in lost(load="968"), True)
+check("lost: capacity 0 -> no estimate", lost(cap="0"),
+      "External grid power has been lost. Battery SOC: 80%. Load: 1000 W.")
+check("lost: load 30 W -> no estimate, load shown", lost(load="30"),
+      "External grid power has been lost. Battery SOC: 80%. Load: 30 W.")
+check("lost: load unavailable -> neither", lost(load="unavailable"),
+      "External grid power has been lost. Battery SOC: 80%.")
+check("lost: SOC at the min -> no estimate", "Estimated" in lost(soc="10"), False)
+check("lost: SOC unavailable -> no estimate", "Estimated" in lost(soc="unavailable"), False)
+check("lost: under 1 h", "~0 h 45 m." in lost(soc="20", load="1720"), True)
+check("lost: no grid voltage", "voltage" in lost(), False)
+sl = [x for x in auto["elfin_deye_grid_outage_started"]["actions"] if "if" in x][0]["then"]
+soc_tpl = [x for x in sl if x.get("action") == "input_number.set_value"][0]["data"]["value"]
+check("lost: SOC at loss stored", Env({}, d).r(soc_tpl, v_soc=80), "80.0")
+check("lost: SOC unavailable stored as -1", Env({}, d).r(soc_tpl, v_soc="unavailable"), "-1")
+
+dt_tpl = trig["sensor"][0]["attributes"]["duration_text"]
+for secs, want in ((220, "3m 40s"), (5, "0m 05s"), (3599, "59m 59s"), (3600, "1h 00m 00s"), (3912, "1h 05m 12s")):
+    check(f"duration_text {secs} s", Env({}, d).r(dt_tpl, delta=secs), want)
+_, attrs = last_duration(True, D(19, 18, 10), D(19, 18, 10), D(19, 21, 50))
+check("duration_text from the trigger sensor", attrs["duration_text"], "3m 40s")
+
+
+def restored(status="Normal", active="on", soc_at_loss="85", l1="231", text="3m 40s"):
+    stt = {"sensor.elfin_deye_battery_soc": "72", "sensor.elfin_deye_ac_l1_voltage": l1,
+           "sensor.elfin_deye_last_grid_outage_duration": "0h 03m",
+           "input_number.elfin_deye_grid_outage_soc_at_loss": soc_at_loss,
+           "input_boolean.elfin_deye_grid_outage_active": active,
+           "sensor.elfin_deye_inverter_status": status}
+    att = {("sensor.elfin_deye_last_grid_outage_duration", "duration_text"): text}
+    return render_auto(auto["elfin_deye_grid_restored"], stt, att)[1]
+
+
+check("restored: status Normal hidden", restored(),
+      "External grid power is back. Outage duration: 3m 40s. "
+      "Battery SOC: 85% -> 72%. Grid voltage L1: 231 V.")
+check("restored: status Fault shown", restored(status="Fault").endswith("Inverter status: Fault."), True)
+check("restored: status unavailable hidden", "Inverter status" in restored(status="unavailable"), False)
+check("restored: SOC at loss -1 -> now only", "Battery SOC: 72%." in restored(soc_at_loss="-1.0"), True)
+check("restored: flag off -> stale SOC ignored", "85%" in restored(active="off"), False)
+check("restored: no duration_text yet -> state", "Outage duration: 0h 03m." in restored(text=None), True)
+check("restored: L1 unavailable hidden", "voltage" in restored(l1="unavailable"), False)
+
+ms = load("packages/deye_modbus.yaml")
+st_tpl = [s for s in ms["template"][0]["sensor"] if s["unique_id"] == "elfin_deye_inverter_status"][0]["state"]
+for raw, want in (("2", "Normal"), ("4", "Fault"), ("0", "Standby"), ("9", "Unknown (9)")):
+    check(f"inverter status raw {raw}", Env({"sensor.elfin_deye_inverter_state_raw": raw}, d).r(st_tpl), want)
+print("sample lost message:", lost())
+print("sample restored message:", restored(status="Alarm"))
 
 sys.exit(1 if fails else 0)

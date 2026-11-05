@@ -298,7 +298,8 @@ packages and the dashboards and renders them with plain Jinja and mocked
 states: active TOU slot and target SOC, grid-charge bit decoding, the
 HACS dashboard's TOU bars (cells vs card-mod rules), losses formula,
 clock register encoding and read-back check, outage duration across
-restarts.
+restarts, the outage messages (runtime estimate shown or hidden, duration
+text, SOC at loss -> now, inverter status shown only when not Normal).
 From the repository root:
 
 ```sh
@@ -321,3 +322,12 @@ tools -> Template with the real sensors before relying on it.
   no generator on the test install).
 - PV registers (no panels on the test install).
 - Other LP1 models or firmware; RS485-to-TCP gateways other than the EW11.
+- Outage message fields added after 2026-10-12: load and runtime
+  estimate in "grid lost"; duration with seconds, SOC at loss -> now and
+  inverter status in "grid restored". Offline template checks only. On
+  the next real outage, check: the estimate is plausible for the load,
+  the duration matches the logbook, the SOC pair matches history, and
+  no "Inverter status" line while the inverter shows Normal.
+- Inverter status, register 59 (2 = Normal per kellerza/sunsynk and
+  ha-solarman): after deploy, Elfin Deye Inverter Status should read
+  Normal in normal operation.
